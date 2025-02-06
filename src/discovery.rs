@@ -13,18 +13,18 @@ pub enum Language {
 
 #[derive(Debug)]
 pub struct DetectedResult {
-    pub description: String,
     pub lang: Language,
     pub path: PathBuf,
     pub size: u64,
 }
 
 #[derive(Debug)]
-pub struct PathDefinition {
+pub struct DiscoveryDefinition {
     pub lang: Language,
     pub discovery: bool,
     pub description: String,
     pub path: PathBuf,
+    pub results: Vec<DetectedResult>,
 }
 
 // pub fn discovery_definitions_from_config(home: &PathBuf, config: &Config) -> Vec<PathDefinition> {
@@ -72,25 +72,28 @@ pub struct PathDefinition {
 //     ]
 // }
 
-fn default_discovery_definitions() -> Vec<PathDefinition> {
+fn default_discovery_definitions() -> Vec<DiscoveryDefinition> {
     vec![
-        PathDefinition {
+        DiscoveryDefinition {
             lang: Language::RUST,
             discovery: false,
             description: "Cargo registry".into(),
             path: ".cargo/registry".into(),
+            results: vec![],
         },
-        PathDefinition {
+        DiscoveryDefinition {
             lang: Language::PYTHON,
             discovery: false,
             description: "Poetry cache".into(),
             path: "Library/Caches/pypoetry".into(),
+            results: vec![],
         },
-        PathDefinition {
+        DiscoveryDefinition {
             lang: Language::PYTHON,
             discovery: false,
             description: "uv cache".into(),
             path: ".cache/uv".into(),
+            results: vec![],
         },
     ]
 }
@@ -98,8 +101,7 @@ fn default_discovery_definitions() -> Vec<PathDefinition> {
 pub struct DiscoveryManager {
     home: PathBuf,
     db: FilesDB,
-    definitions: Vec<PathDefinition>,
-    results: Vec<DetectedResult>,
+    definitions: Vec<DiscoveryDefinition>,
 }
 
 impl DiscoveryManager {
@@ -108,7 +110,6 @@ impl DiscoveryManager {
             home: home.clone(),
             db: FilesDB::new(),
             definitions: default_discovery_definitions(),
-            results: vec![],
         }
     }
 
@@ -122,23 +123,24 @@ impl DiscoveryManager {
             config
                 .projects
                 .iter()
-                .map(|pd| PathDefinition {
+                .map(|pd| DiscoveryDefinition {
                     lang: Language::PROJECTS,
                     discovery: true,
                     description: pd.name.clone().unwrap_or("Projects".into()),
                     path: pd.path.clone(),
+                    results: vec![],
                 })
                 .collect::<Vec<_>>(),
         );
         self
     }
 
-    pub fn collect(mut self) -> Vec<DetectedResult> {
+    pub fn collect(mut self) -> Vec<DiscoveryDefinition> {
         self.resolve_relative_paths();
         self.load_paths();
         self.discover();
 
-        self.results
+        self.definitions
     }
 
     fn resolve_relative_paths(&mut self) {
@@ -161,8 +163,7 @@ impl DiscoveryManager {
             match (pd.lang, pd.discovery) {
                 (_, false) => {
                     let size = self.db.iter_dir(&pd.path).filter_map(|fi| fi.size).sum();
-                    self.results.push(DetectedResult {
-                        description: pd.description.clone(),
+                    pd.results.push(DetectedResult {
                         lang: pd.lang,
                         path: pd.path.clone(),
                         size,
@@ -177,8 +178,7 @@ impl DiscoveryManager {
                         .collect();
                     detected_paths.iter().for_each(|p| {
                         let size = self.db.iter_dir(&p).filter_map(|fi| fi.size).sum();
-                        self.results.push(DetectedResult {
-                            description: pd.description.clone(),
+                        pd.results.push(DetectedResult {
                             lang: pd.lang,
                             path: pd.path.clone(),
                             size,
@@ -194,8 +194,7 @@ impl DiscoveryManager {
                         .collect();
                     detected_paths.iter().for_each(|p| {
                         let size = self.db.iter_dir(&p).filter_map(|fi| fi.size).sum();
-                        self.results.push(DetectedResult {
-                            description: pd.description.clone(),
+                        pd.results.push(DetectedResult {
                             lang: pd.lang,
                             path: pd.path.clone(),
                             size,
@@ -211,9 +210,8 @@ impl DiscoveryManager {
                         .collect();
                     detected_paths.iter().for_each(|p| {
                         let size = self.db.iter_dir(&p).filter_map(|fi| fi.size).sum();
-                        self.results.push(DetectedResult {
-                            description: pd.description.clone(),
-                            lang: pd.lang,
+                        pd.results.push(DetectedResult {
+                            lang: Language::PYTHON,
                             path: (*p).clone(),
                             size,
                         });
@@ -224,11 +222,10 @@ impl DiscoveryManager {
                         .filter(|file| rust_detector(&self.db, &file.path))
                         .map(|file| &file.path)
                         .collect();
-                    detected_paths.iter().for_each(|p| {
+                    detected_paths.into_iter().for_each(|p| {
                         let size = self.db.iter_dir(&p).filter_map(|fi| fi.size).sum();
-                        self.results.push(DetectedResult {
-                            description: pd.description.clone(),
-                            lang: pd.lang,
+                        pd.results.push(DetectedResult {
+                            lang: Language::RUST,
                             path: (*p).clone(),
                             size,
                         });
@@ -240,7 +237,8 @@ impl DiscoveryManager {
 }
 
 fn rust_detector(db: &FilesDB, path: &Path) -> bool {
-    db.exists(&path.join("Cargo.toml")) && db.is_dir(&path.join("target"))
+    path.ends_with("target")
+        && (db.is_dir(&path.join("debug/build")) || db.is_dir(&path.join("release/build")))
 }
 
 fn python_detector(db: &FilesDB, path: &Path) -> bool {
@@ -255,16 +253,17 @@ fn define_from_section(
     home: &PathBuf,
     section: &Option<Vec<CustomPathDefinition>>,
     language: Language,
-) -> Option<Vec<PathDefinition>> {
+) -> Option<Vec<DiscoveryDefinition>> {
     match &section {
         None => None,
         Some(v) => Some(
             v.iter()
-                .map(|pd| PathDefinition {
+                .map(|pd| DiscoveryDefinition {
                     lang: language,
                     discovery: pd.discovery,
                     description: pd.name.clone(),
                     path: home.join(&pd.path),
+                    results: vec![],
                 })
                 .collect::<Vec<_>>(),
         ),

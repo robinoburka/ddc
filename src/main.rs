@@ -25,17 +25,22 @@ fn main() -> Result<()> {
 
     let home_dir = home::home_dir().context("Couldn't identify your home directory.")?;
 
-    let results = DiscoveryManager::new(&home_dir)
+    let definitions = DiscoveryManager::new(&home_dir)
         .add_from_config(&config)
         .collect();
 
-    for result in results {
-        println!(
-            "{}: {}: {}",
-            result.description,
-            result.path.display(),
-            format_size(result.size, DECIMAL)
-        );
+    for def in definitions {
+        println!("{}", def.description);
+        println!("==============");
+        for res in def.results {
+            println!(
+                "{:?} {}: {}",
+                res.lang,
+                res.path.display(),
+                format_size(res.size, DECIMAL)
+            );
+        }
+        println!();
     }
 
     // let scan_paths = discovery
