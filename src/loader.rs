@@ -9,7 +9,7 @@ use crate::file_info::FileInfo;
 use crate::files_db::FilesDB;
 
 // The value was carefully tested and smaller numbers work better than higher.
-const THREADS: usize = 4;
+// const THREADS: usize = 4;
 
 #[derive(thiserror::Error, Debug)]
 pub enum LoaderError {
@@ -20,40 +20,22 @@ pub enum LoaderError {
     },
 }
 
-// pub fn load_files_vec(scan_path: &PathBuf) -> anyhow::Result<FilesDB> {
-//     let paths = load_paths(scan_path)?;
-//
-//     let (sender, receiver) = channel();
-//     paths.into_par_iter().for_each_with(sender, |sender, path| {
-//         if let Ok(fi) = FileInfo::try_from(&path) {
-//             sender.send((path, fi)).unwrap();
-//         }
-//     });
-//
-//     let mut db = FilesDB::new();
-//     receiver.iter().for_each(|(path, info)| {
-//         db.add(path, info);
-//     });
-//
-//     Ok(db)
-// }
-
-fn load_paths(directory: &PathBuf) -> anyhow::Result<Vec<PathBuf>> {
-    let paths = WalkDir::new(directory)
-        .parallelism(Parallelism::RayonNewPool(THREADS))
-        .skip_hidden(false)
-        .into_iter()
-        .filter_map(|res| res.map(|de| de.path()).ok())
-        .collect::<Vec<_>>();
-
-    Ok(paths)
-}
-
 pub struct BaseLoader;
 
 impl BaseLoader {
     pub fn new() -> Self {
         Self
+    }
+
+    fn load_file_infos(&self, directory: &PathBuf) -> Vec<FileInfo> {
+        let paths = WalkDir::new(directory)
+            .parallelism(Parallelism::Serial)
+            .skip_hidden(false)
+            .into_iter()
+            .filter_map(|res| res.map(|de| de.path()).ok())
+            .filter_map(|path| FileInfo::try_from(&path).ok())
+            .collect::<Vec<_>>();
+        paths
     }
 }
 impl PathLoader for BaseLoader {
@@ -63,14 +45,10 @@ impl PathLoader for BaseLoader {
         scan_paths
             .into_par_iter()
             .for_each_with(sender, |sender, path| {
-                // if let Ok(infos) = load_files(&path) {
-                let infos = load_files(&path);
+                let infos = self.load_file_infos(&path);
                 infos
                     .into_iter()
                     .for_each(|fi| sender.send((fi.path.clone(), fi)).unwrap());
-                // } else {
-                //     eprintln!("Unable to load path '{}'", path.display());
-                // }
             });
 
         let mut db = FilesDB::new();
@@ -80,16 +58,4 @@ impl PathLoader for BaseLoader {
 
         db
     }
-}
-
-fn load_files(directory: &PathBuf) -> Vec<FileInfo> {
-    let paths = WalkDir::new(directory)
-        .parallelism(Parallelism::RayonNewPool(THREADS))
-        .skip_hidden(false)
-        .into_iter()
-        .filter_map(|res| res.map(|de| de.path()).ok())
-        .filter_map(|path| FileInfo::try_from(&path).ok())
-        .collect::<Vec<_>>();
-
-    paths
 }

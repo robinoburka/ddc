@@ -10,7 +10,6 @@ use toml;
 
 use crate::config::Config;
 use crate::discovery::DiscoveryManager;
-use crate::loader::BaseLoader;
 
 mod config;
 mod discovery;
