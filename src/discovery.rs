@@ -1,4 +1,5 @@
 use std::path::{Path, PathBuf};
+use std::time::SystemTime;
 
 use crate::config::{Config, CustomPathDefinition};
 use crate::files_db::FilesDB;
@@ -16,6 +17,7 @@ pub struct DetectedResult {
     pub lang: Language,
     pub path: PathBuf,
     pub size: u64,
+    pub last_update: Option<SystemTime>,
 }
 
 #[derive(Debug)]
@@ -140,6 +142,7 @@ impl<L: PathLoader> DiscoveryManager<L> {
                     pd.results.push(DetectedResult {
                         lang: pd.lang,
                         path: pd.path.clone(),
+                        last_update: None,
                         size,
                     });
                 }
@@ -169,9 +172,11 @@ where
         .collect();
     detected_paths.iter().for_each(|p| {
         let size = db.iter_dir(&p).filter_map(|fi| fi.size).sum();
+        let last_update = db.iter_dir(&p).filter_map(|fi| fi.touched).max();
         pd.results.push(DetectedResult {
             lang,
             path: (*p).clone(),
+            last_update,
             size,
         });
     });

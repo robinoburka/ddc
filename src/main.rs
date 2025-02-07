@@ -4,6 +4,7 @@ use std::fs;
 use std::path::PathBuf;
 
 use anyhow::{Context, Result};
+use chrono::{DateTime, Local};
 use home;
 use humansize::{format_size, DECIMAL};
 use toml;
@@ -33,9 +34,19 @@ fn main() -> Result<()> {
         println!("{}", def.description);
         println!("==============");
         for res in def.results {
+            let formatted_time = res
+                .last_update
+                .map(|t| {
+                    DateTime::<Local>::from(t)
+                        .format("%Y-%m-%d %H:%M:%S")
+                        .to_string()
+                })
+                .unwrap_or("".into());
+
             println!(
-                "{:?} {}: {}",
+                "{:?} ({}) {}: {}",
                 res.lang,
+                formatted_time,
                 res.path.display(),
                 format_size(res.size, DECIMAL)
             );
