@@ -4,6 +4,7 @@ use std::sync::mpsc::channel;
 use jwalk::rayon::prelude::*;
 use jwalk::{Parallelism, WalkDir};
 
+use crate::discovery::PathLoader;
 use crate::file_info::FileInfo;
 use crate::files_db::FilesDB;
 
@@ -48,28 +49,37 @@ fn load_paths(directory: &PathBuf) -> anyhow::Result<Vec<PathBuf>> {
     Ok(paths)
 }
 
-pub fn load_multiple_paths(scan_paths: &[PathBuf]) -> FilesDB {
-    let (sender, receiver) = channel();
+pub struct BaseLoader;
 
-    scan_paths
-        .into_par_iter()
-        .for_each_with(sender, |sender, path| {
-            // if let Ok(infos) = load_files(&path) {
-            let infos = load_files(&path);
-            infos
-                .into_iter()
-                .for_each(|fi| sender.send((fi.path.clone(), fi)).unwrap());
-            // } else {
-            //     eprintln!("Unable to load path '{}'", path.display());
-            // }
+impl BaseLoader {
+    pub fn new() -> Self {
+        Self
+    }
+}
+impl PathLoader for BaseLoader {
+    fn load_multiple_paths(&self, scan_paths: &[PathBuf]) -> FilesDB {
+        let (sender, receiver) = channel();
+
+        scan_paths
+            .into_par_iter()
+            .for_each_with(sender, |sender, path| {
+                // if let Ok(infos) = load_files(&path) {
+                let infos = load_files(&path);
+                infos
+                    .into_iter()
+                    .for_each(|fi| sender.send((fi.path.clone(), fi)).unwrap());
+                // } else {
+                //     eprintln!("Unable to load path '{}'", path.display());
+                // }
+            });
+
+        let mut db = FilesDB::new();
+        receiver.iter().for_each(|(path, info)| {
+            db.add(path, info);
         });
 
-    let mut db = FilesDB::new();
-    receiver.iter().for_each(|(path, info)| {
-        db.add(path, info);
-    });
-
-    db
+        db
+    }
 }
 
 fn load_files(directory: &PathBuf) -> Vec<FileInfo> {

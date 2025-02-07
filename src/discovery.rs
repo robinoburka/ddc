@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 
 use crate::config::{Config, CustomPathDefinition};
 use crate::files_db::FilesDB;
-use crate::loader::load_multiple_paths;
+use crate::loader::BaseLoader;
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum Language {
@@ -25,6 +25,11 @@ pub struct DiscoveryDefinition {
     pub description: String,
     pub path: PathBuf,
     pub results: Vec<DetectedResult>,
+}
+
+pub trait PathLoader {
+    // There should be better encapsulation than this
+    fn load_multiple_paths(&self, scan_paths: &[PathBuf]) -> FilesDB;
 }
 
 // pub fn discovery_definitions_from_config(home: &PathBuf, config: &Config) -> Vec<PathDefinition> {
@@ -98,16 +103,30 @@ fn default_discovery_definitions() -> Vec<DiscoveryDefinition> {
     ]
 }
 
-pub struct DiscoveryManager {
+pub struct DiscoveryManager<L: PathLoader> {
     home: PathBuf,
+    loader: L,
     db: FilesDB,
     definitions: Vec<DiscoveryDefinition>,
 }
 
-impl DiscoveryManager {
-    pub fn new(home: &PathBuf) -> DiscoveryManager {
+impl DiscoveryManager<BaseLoader> {
+    pub fn with_default_loader(home: &PathBuf) -> Self {
         Self {
             home: home.clone(),
+            loader: BaseLoader::new(),
+            db: FilesDB::new(),
+            definitions: default_discovery_definitions(),
+        }
+    }
+}
+
+impl<L: PathLoader> DiscoveryManager<L> {
+    #[allow(dead_code)]
+    pub fn new(loader: L, home: &PathBuf) -> Self {
+        Self {
+            home: home.clone(),
+            loader,
             db: FilesDB::new(),
             definitions: default_discovery_definitions(),
         }
@@ -155,7 +174,7 @@ impl DiscoveryManager {
             .iter()
             .map(|def| def.path.clone())
             .collect::<Vec<_>>();
-        self.db = load_multiple_paths(&paths);
+        self.db = self.loader.load_multiple_paths(&paths);
     }
 
     fn discover(&mut self) {
@@ -243,10 +262,6 @@ fn rust_detector(db: &FilesDB, path: &Path) -> bool {
 
 fn python_detector(db: &FilesDB, path: &Path) -> bool {
     db.exists(&path.join("bin/python"))
-}
-
-fn git_detector(db: &FilesDB, path: &Path) -> bool {
-    db.is_dir(&path.join(".git"))
 }
 
 fn define_from_section(

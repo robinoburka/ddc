@@ -10,6 +10,7 @@ use toml;
 
 use crate::config::Config;
 use crate::discovery::DiscoveryManager;
+use crate::loader::BaseLoader;
 
 mod config;
 mod discovery;
@@ -25,7 +26,7 @@ fn main() -> Result<()> {
 
     let home_dir = home::home_dir().context("Couldn't identify your home directory.")?;
 
-    let definitions = DiscoveryManager::new(&home_dir)
+    let definitions = DiscoveryManager::with_default_loader(&home_dir)
         .add_from_config(&config)
         .collect();
 
