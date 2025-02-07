@@ -32,51 +32,6 @@ pub trait PathLoader {
     fn load_multiple_paths(&self, scan_paths: &[PathBuf]) -> FilesDB;
 }
 
-// pub fn discovery_definitions_from_config(home: &PathBuf, config: &Config) -> Vec<PathDefinition> {
-//     let mut definitions = default_discovery_definitions(home);
-//
-//     define_from_section(home, &config.python, Language::PYTHON).map(|r| definitions.extend(r));
-//     define_from_section(home, &config.rust, Language::RUST).map(|r| definitions.extend(r));
-//
-//     definitions.extend(
-//         config
-//             .projects
-//             .iter()
-//             .map(|pd| PathDefinition {
-//                 lang: Language::PROJECTS,
-//                 discovery: true,
-//                 description: pd.name.clone().unwrap_or("Projects".into()),
-//                 path: pd.path.clone(),
-//             })
-//             .collect::<Vec<_>>(),
-//     );
-//
-//     definitions
-// }
-
-// fn default_discovery_definitions(home: &PathBuf) -> Vec<PathDefinition> {
-//     vec![
-//         PathDefinition {
-//             lang: Language::RUST,
-//             discovery: false,
-//             description: "Cargo registry".into(),
-//             path: home.join(".cargo/registry".into()),
-//         },
-//         PathDefinition {
-//             lang: Language::PYTHON,
-//             discovery: false,
-//             description: "Poetry cache".into(),
-//             path: home.join("Library/Caches/pypoetry".into()),
-//         },
-//         PathDefinition {
-//             lang: Language::PYTHON,
-//             discovery: false,
-//             description: "uv cache".into(),
-//             path: home.join(".cache/uv".into()),
-//         },
-//     ]
-// }
-
 fn default_discovery_definitions() -> Vec<DiscoveryDefinition> {
     vec![
         DiscoveryDefinition {
@@ -189,70 +144,37 @@ impl<L: PathLoader> DiscoveryManager<L> {
                     });
                 }
                 (Language::RUST, true) => {
-                    let detected_paths: Vec<&PathBuf> = self
-                        .db
-                        .iter_directories(&pd.path)
-                        .filter(|file| rust_detector(&self.db, &file.path))
-                        .map(|file| &file.path)
-                        .collect();
-                    detected_paths.iter().for_each(|p| {
-                        let size = self.db.iter_dir(&p).filter_map(|fi| fi.size).sum();
-                        pd.results.push(DetectedResult {
-                            lang: pd.lang,
-                            path: pd.path.clone(),
-                            size,
-                        });
-                    })
+                    dynamic_discovery(&self.db, pd, rust_detector, Language::RUST);
                 }
                 (Language::PYTHON, true) => {
-                    let detected_paths: Vec<&PathBuf> = self
-                        .db
-                        .iter_directories(&pd.path)
-                        .filter(|file| python_detector(&self.db, &file.path))
-                        .map(|file| &file.path)
-                        .collect();
-                    detected_paths.iter().for_each(|p| {
-                        let size = self.db.iter_dir(&p).filter_map(|fi| fi.size).sum();
-                        pd.results.push(DetectedResult {
-                            lang: pd.lang,
-                            path: pd.path.clone(),
-                            size,
-                        });
-                    })
+                    dynamic_discovery(&self.db, pd, python_detector, Language::PYTHON);
                 }
                 (Language::PROJECTS, true) => {
-                    let detected_paths: Vec<&PathBuf> = self
-                        .db
-                        .iter_directories(&pd.path)
-                        .filter(|file| python_detector(&self.db, &file.path))
-                        .map(|file| &file.path)
-                        .collect();
-                    detected_paths.iter().for_each(|p| {
-                        let size = self.db.iter_dir(&p).filter_map(|fi| fi.size).sum();
-                        pd.results.push(DetectedResult {
-                            lang: Language::PYTHON,
-                            path: (*p).clone(),
-                            size,
-                        });
-                    });
-                    let detected_paths: Vec<&PathBuf> = self
-                        .db
-                        .iter_directories(&pd.path)
-                        .filter(|file| rust_detector(&self.db, &file.path))
-                        .map(|file| &file.path)
-                        .collect();
-                    detected_paths.into_iter().for_each(|p| {
-                        let size = self.db.iter_dir(&p).filter_map(|fi| fi.size).sum();
-                        pd.results.push(DetectedResult {
-                            lang: Language::RUST,
-                            path: (*p).clone(),
-                            size,
-                        });
-                    })
+                    dynamic_discovery(&self.db, pd, rust_detector, Language::RUST);
+                    dynamic_discovery(&self.db, pd, python_detector, Language::PYTHON);
                 }
             }
         }
     }
+}
+
+fn dynamic_discovery<D>(db: &FilesDB, pd: &mut DiscoveryDefinition, detector: D, lang: Language)
+where
+    D: Fn(&FilesDB, &Path) -> bool,
+{
+    let detected_paths: Vec<&PathBuf> = db
+        .iter_directories(&pd.path)
+        .filter(|fi| detector(&db, &fi.path))
+        .map(|fi| &fi.path)
+        .collect();
+    detected_paths.iter().for_each(|p| {
+        let size = db.iter_dir(&p).filter_map(|fi| fi.size).sum();
+        pd.results.push(DetectedResult {
+            lang,
+            path: (*p).clone(),
+            size,
+        });
+    });
 }
 
 fn rust_detector(db: &FilesDB, path: &Path) -> bool {
