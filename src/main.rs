@@ -7,10 +7,12 @@ use anyhow::{Context, Result};
 use chrono::{DateTime, Local};
 use home;
 use humansize::{format_size, DECIMAL};
+use tabled::settings::{Panel, Style};
+use tabled::{Table, Tabled};
 use toml;
 
 use crate::config::Config;
-use crate::discovery::DiscoveryManager;
+use crate::discovery::{DetectedResult, DiscoveryManager};
 
 mod config;
 mod discovery;
@@ -31,49 +33,43 @@ fn main() -> Result<()> {
         .collect();
 
     for def in definitions {
-        println!("{}", def.description);
-        println!("==============");
-        for res in def.results {
-            let formatted_time = res
-                .last_update
-                .map(|t| {
-                    DateTime::<Local>::from(t)
-                        .format("%Y-%m-%d %H:%M:%S")
-                        .to_string()
-                })
-                .unwrap_or("".into());
-
-            println!(
-                "{:?} ({}) {}: {}",
-                res.lang,
-                formatted_time,
-                res.path.display(),
-                format_size(res.size, DECIMAL)
-            );
+        if def.results.len() == 0 {
+            continue;
         }
-        println!();
+        let data = def.results.iter().map(Record::from).collect::<Vec<_>>();
+        let table = Table::new(data)
+            .with(Panel::header(def.description))
+            .with(Style::modern_rounded())
+            .to_string();
+        println!("{table}");
     }
 
-    // let scan_paths = discovery
-    //     .iter()
-    //     .map(|pd| &pd.path)
-    //     .map(|p| {
-    //         if p.is_relative() {
-    //             home_dir.join(p)
-    //         } else {
-    //             p.clone()
-    //         }
-    //     })
-    //     .collect::<Vec<_>>();
-    // println!("{:#?}", scan_paths);
-
-    // let db = load_multiple_paths(&scan_paths)?;
-    // println!("Collected {} results", db.len());
-    //
-    // for path in scan_paths.iter() {
-    //     let size: u64 = db.iter_dir(path).filter_map(|fi| fi.size).sum();
-    //     println!("{}: {}", path.display(), format_size(size, DECIMAL));
-    // }
-
     Ok(())
+}
+
+#[derive(Tabled)]
+struct Record {
+    #[tabled(rename = "Language")]
+    lang: String,
+    #[tabled(rename = "Last change", display("tabled::derive::display::option", ""))]
+    time: Option<String>,
+    #[tabled(rename = "Path")]
+    path: String,
+    #[tabled(rename = "Size")]
+    human_size: String,
+}
+
+impl From<&DetectedResult> for Record {
+    fn from(value: &DetectedResult) -> Self {
+        Self {
+            lang: value.lang.to_string(),
+            time: value.last_update.map(|t| {
+                DateTime::<Local>::from(t)
+                    .format("%Y-%m-%d %H:%M:%S")
+                    .to_string()
+            }),
+            path: value.path.display().to_string(),
+            human_size: format_size(value.size, DECIMAL),
+        }
+    }
 }
