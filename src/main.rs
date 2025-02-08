@@ -12,7 +12,7 @@ use tabled::{Table, Tabled};
 use toml;
 
 use crate::config::Config;
-use crate::discovery::{DetectedResult, DiscoveryManager};
+use crate::discovery::{DetectedResult, DiscoveryDefinition, DiscoveryManager};
 
 mod config;
 mod discovery;
@@ -32,19 +32,40 @@ fn main() -> Result<()> {
         .add_from_config(&config)
         .collect();
 
+    print_results(definitions);
+
+    Ok(())
+}
+
+fn print_results(definitions: Vec<DiscoveryDefinition>) {
+    let mut discovery_data = vec![];
+    let mut static_data = vec![];
+
     for def in definitions {
         if def.results.len() == 0 {
             continue;
         }
-        let data = def.results.iter().map(Record::from).collect::<Vec<_>>();
-        let table = Table::new(data)
-            .with(Panel::header(def.description))
-            .with(Style::modern_rounded())
-            .to_string();
-        println!("{table}");
+        if def.discovery {
+            discovery_data.extend(def.results.iter().map(Record::from));
+        } else {
+            static_data.extend(def.results.iter().map(|d| StaticRecord {
+                description: def.description.clone(),
+                record: Record::from(d),
+            }));
+        }
     }
 
-    Ok(())
+    let table_static = Table::new(static_data)
+        .with(Panel::header("Tooling"))
+        .with(Style::modern_rounded())
+        .to_string();
+    println!("{table_static}");
+
+    let table_discovery = Table::new(discovery_data)
+        .with(Panel::header("Projects"))
+        .with(Style::modern_rounded())
+        .to_string();
+    println!("{table_discovery}");
 }
 
 #[derive(Tabled)]
@@ -72,4 +93,12 @@ impl From<&DetectedResult> for Record {
             human_size: format_size(value.size, DECIMAL),
         }
     }
+}
+
+#[derive(Tabled)]
+struct StaticRecord {
+    #[tabled(rename = "Description")]
+    description: String,
+    #[tabled(inline)]
+    record: Record,
 }
