@@ -150,10 +150,11 @@ impl<L: PathLoader> DiscoveryManager<L> {
             match (pd.lang, pd.discovery) {
                 (_, false) => {
                     let size = self.db.iter_dir(&pd.path).filter_map(|fi| fi.size).sum();
+                    let last_update = self.db.iter_dir(&pd.path).filter_map(|fi| fi.touched).max();
                     pd.results.push(DetectedResult {
                         lang: pd.lang,
                         path: pd.path.clone(),
-                        last_update: None,
+                        last_update,
                         size,
                     });
                 }
