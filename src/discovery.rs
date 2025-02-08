@@ -1,3 +1,4 @@
+use std::fmt::{Display, Formatter};
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
@@ -10,6 +11,16 @@ pub enum Language {
     PYTHON,
     RUST,
     PROJECTS,
+}
+
+impl Display for Language {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Language::PYTHON => write!(f, "🐍"),
+            Language::RUST => write!(f, "🦀"),
+            Language::PROJECTS => write!(f, ""),
+        }
+    }
 }
 
 #[derive(Debug)]
