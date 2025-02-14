@@ -140,60 +140,42 @@ mod tests {
 
     fn build_test_structure() -> FilesDB {
         let mut db = FilesDB::new();
-        db.add(
-            PathBuf::from("/foo"),
-            FileInfo {
-                path: PathBuf::from("/foo"),
-                is_dir: true,
-                size: None,
-                touched: None,
-            },
-        );
-        db.add(
-            PathBuf::from("/foo/a.txt"),
-            FileInfo {
-                path: PathBuf::from("/foo/a.txt"),
-                is_dir: false,
-                size: Some(10),
-                touched: None,
-            },
-        );
-        db.add(
-            PathBuf::from("/foo/bar"),
-            FileInfo {
-                path: PathBuf::from("/foo/bar"),
-                is_dir: true,
-                size: None,
-                touched: None,
-            },
-        );
-        db.add(
-            PathBuf::from("/foo/bar/empty"),
-            FileInfo {
-                path: PathBuf::from("/foo/bar/empty"),
-                is_dir: true,
-                size: None,
-                touched: None,
-            },
-        );
-        db.add(
-            PathBuf::from("/foo/baz"),
-            FileInfo {
-                path: PathBuf::from("/foo/baz"),
-                is_dir: true,
-                size: None,
-                touched: None,
-            },
-        );
-        db.add(
-            PathBuf::from("/foo/baz/b.txt"),
-            FileInfo {
-                path: PathBuf::from("/foo/baz/b.txt"),
-                is_dir: false,
-                size: Some(20),
-                touched: None,
-            },
-        );
+        db.add(PathBuf::from("/foo"), FileInfo {
+            path: PathBuf::from("/foo"),
+            is_dir: true,
+            size: None,
+            touched: None,
+        });
+        db.add(PathBuf::from("/foo/a.txt"), FileInfo {
+            path: PathBuf::from("/foo/a.txt"),
+            is_dir: false,
+            size: Some(10),
+            touched: None,
+        });
+        db.add(PathBuf::from("/foo/bar"), FileInfo {
+            path: PathBuf::from("/foo/bar"),
+            is_dir: true,
+            size: None,
+            touched: None,
+        });
+        db.add(PathBuf::from("/foo/bar/empty"), FileInfo {
+            path: PathBuf::from("/foo/bar/empty"),
+            is_dir: true,
+            size: None,
+            touched: None,
+        });
+        db.add(PathBuf::from("/foo/baz"), FileInfo {
+            path: PathBuf::from("/foo/baz"),
+            is_dir: true,
+            size: None,
+            touched: None,
+        });
+        db.add(PathBuf::from("/foo/baz/b.txt"), FileInfo {
+            path: PathBuf::from("/foo/baz/b.txt"),
+            is_dir: false,
+            size: Some(20),
+            touched: None,
+        });
 
         return db;
     }
