@@ -1,6 +1,6 @@
 use chrono::{DateTime, Local};
-use humansize::{format_size, DECIMAL};
-use tabled::settings::{object::Cell, Color, Modify, Panel, Style};
+use humansize::{DECIMAL, format_size};
+use tabled::settings::{Color, Modify, Panel, Style, object::Cell};
 use tabled::{Table, Tabled};
 
 use crate::discovery::{DetectedResult, DiscoveryDefinition};

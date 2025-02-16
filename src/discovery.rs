@@ -4,7 +4,7 @@ use std::time::SystemTime;
 
 use crate::config::{Config, CustomPathDefinition};
 use crate::files_db::FilesDB;
-use crate::loader::BaseLoader;
+use crate::loader::FullyParallelLoader;
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum Language {
@@ -78,11 +78,11 @@ pub struct DiscoveryManager<L: PathLoader> {
     definitions: Vec<DiscoveryDefinition>,
 }
 
-impl DiscoveryManager<BaseLoader> {
+impl DiscoveryManager<FullyParallelLoader> {
     pub fn with_default_loader(home: &PathBuf) -> Self {
         Self {
             home: home.clone(),
-            loader: BaseLoader::new(),
+            loader: FullyParallelLoader::new(),
             db: FilesDB::new(),
             definitions: default_discovery_definitions(),
         }
