@@ -1,6 +1,7 @@
 use chrono::{DateTime, Local};
 use humansize::{DECIMAL, format_size};
-use tabled::settings::{Color, Modify, Panel, Style, object::Cell};
+use tabled::settings::object::Rows;
+use tabled::settings::{Alignment, Color, Modify, Panel, Style, object::Cell};
 use tabled::{Table, Tabled};
 
 use crate::discovery::{DetectedResult, DiscoveryDefinition};
@@ -9,13 +10,18 @@ pub fn print_results(definitions: Vec<DiscoveryDefinition>) {
     let mut discovery_data = vec![];
     let mut static_data = vec![];
 
+    let mut discovery_sum: u64 = 0;
+    let mut static_sum: u64 = 0;
+
     for def in definitions {
         if def.results.len() == 0 {
             continue;
         }
         if def.discovery {
+            discovery_sum += def.results.iter().map(|r| r.size).sum::<u64>();
             discovery_data.extend(def.results.iter().map(Record::from));
         } else {
+            static_sum += def.results.iter().map(|r| r.size).sum::<u64>();
             static_data.extend(def.results.iter().map(|d| StaticRecord {
                 description: def.description.clone(),
                 record: Record::from(d),
@@ -25,6 +31,9 @@ pub fn print_results(definitions: Vec<DiscoveryDefinition>) {
 
     let table_static = Table::new(static_data)
         .with(Panel::header("Tooling"))
+        .with(Panel::footer(format_size(static_sum, DECIMAL)))
+        .with(Modify::new(Rows::last()).with(Color::BOLD))
+        .with(Modify::new(Rows::last()).with(Alignment::right()))
         .with(Style::modern_rounded())
         .with(Modify::new(Cell::new(0, 0)).with(Color::BOLD))
         .to_string();
@@ -32,6 +41,9 @@ pub fn print_results(definitions: Vec<DiscoveryDefinition>) {
 
     let mut table_discovery_build = Table::new(&discovery_data);
     table_discovery_build.with(Panel::header("Projects"));
+    table_discovery_build.with(Panel::footer(format_size(discovery_sum, DECIMAL)));
+    table_discovery_build.with(Modify::new(Rows::last()).with(Color::BOLD));
+    table_discovery_build.with(Modify::new(Rows::last()).with(Alignment::right()));
     table_discovery_build.with(Modify::new(Cell::new(0, 0)).with(Color::BOLD));
     table_discovery_build.with(Style::modern_rounded());
     discovery_data.iter().enumerate().for_each(|(i, d)| {
