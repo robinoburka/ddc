@@ -79,7 +79,7 @@ pub struct DirectoryIter<'a, 'b> {
     lookup_path: &'b PathBuf,
 }
 
-impl<'a, 'b> Iterator for DirectoryIter<'a, 'b> {
+impl<'a> Iterator for DirectoryIter<'a, '_> {
     type Item = &'a FileInfo;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -97,7 +97,7 @@ pub struct LevelIter<'a, 'b> {
     lookup_path: &'b PathBuf,
 }
 
-impl<'a, 'b> Iterator for LevelIter<'a, 'b> {
+impl<'a> Iterator for LevelIter<'a, '_> {
     type Item = &'a FileInfo;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -116,7 +116,7 @@ pub struct AllDirsIter<'a, 'b> {
     lookup_path: &'b PathBuf,
 }
 
-impl<'a, 'b> Iterator for AllDirsIter<'a, 'b> {
+impl<'a> Iterator for AllDirsIter<'a, '_> {
     type Item = &'a FileInfo;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -140,42 +140,60 @@ mod tests {
 
     fn build_test_structure() -> FilesDB {
         let mut db = FilesDB::new();
-        db.add(PathBuf::from("/foo"), FileInfo {
-            path: PathBuf::from("/foo"),
-            is_dir: true,
-            size: None,
-            touched: None,
-        });
-        db.add(PathBuf::from("/foo/a.txt"), FileInfo {
-            path: PathBuf::from("/foo/a.txt"),
-            is_dir: false,
-            size: Some(10),
-            touched: None,
-        });
-        db.add(PathBuf::from("/foo/bar"), FileInfo {
-            path: PathBuf::from("/foo/bar"),
-            is_dir: true,
-            size: None,
-            touched: None,
-        });
-        db.add(PathBuf::from("/foo/bar/empty"), FileInfo {
-            path: PathBuf::from("/foo/bar/empty"),
-            is_dir: true,
-            size: None,
-            touched: None,
-        });
-        db.add(PathBuf::from("/foo/baz"), FileInfo {
-            path: PathBuf::from("/foo/baz"),
-            is_dir: true,
-            size: None,
-            touched: None,
-        });
-        db.add(PathBuf::from("/foo/baz/b.txt"), FileInfo {
-            path: PathBuf::from("/foo/baz/b.txt"),
-            is_dir: false,
-            size: Some(20),
-            touched: None,
-        });
+        db.add(
+            PathBuf::from("/foo"),
+            FileInfo {
+                path: PathBuf::from("/foo"),
+                is_dir: true,
+                size: None,
+                touched: None,
+            },
+        );
+        db.add(
+            PathBuf::from("/foo/a.txt"),
+            FileInfo {
+                path: PathBuf::from("/foo/a.txt"),
+                is_dir: false,
+                size: Some(10),
+                touched: None,
+            },
+        );
+        db.add(
+            PathBuf::from("/foo/bar"),
+            FileInfo {
+                path: PathBuf::from("/foo/bar"),
+                is_dir: true,
+                size: None,
+                touched: None,
+            },
+        );
+        db.add(
+            PathBuf::from("/foo/bar/empty"),
+            FileInfo {
+                path: PathBuf::from("/foo/bar/empty"),
+                is_dir: true,
+                size: None,
+                touched: None,
+            },
+        );
+        db.add(
+            PathBuf::from("/foo/baz"),
+            FileInfo {
+                path: PathBuf::from("/foo/baz"),
+                is_dir: true,
+                size: None,
+                touched: None,
+            },
+        );
+        db.add(
+            PathBuf::from("/foo/baz/b.txt"),
+            FileInfo {
+                path: PathBuf::from("/foo/baz/b.txt"),
+                is_dir: false,
+                size: Some(20),
+                touched: None,
+            },
+        );
 
         return db;
     }

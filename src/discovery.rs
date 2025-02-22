@@ -8,17 +8,17 @@ use crate::loader::FullyParallelLoader;
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum Language {
-    PYTHON,
-    RUST,
-    PROJECTS,
+    Python,
+    Rust,
+    Projects,
 }
 
 impl Display for Language {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Language::PYTHON => write!(f, "🐍"),
-            Language::RUST => write!(f, "🦀"),
-            Language::PROJECTS => write!(f, ""),
+            Language::Python => write!(f, "🐍"),
+            Language::Rust => write!(f, "🦀"),
+            Language::Projects => write!(f, ""),
         }
     }
 }
@@ -48,21 +48,21 @@ pub trait PathLoader: Default {
 fn default_discovery_definitions() -> Vec<DiscoveryDefinition> {
     vec![
         DiscoveryDefinition {
-            lang: Language::RUST,
+            lang: Language::Rust,
             discovery: false,
             description: "Cargo registry".into(),
             path: ".cargo/registry".into(),
             results: vec![],
         },
         DiscoveryDefinition {
-            lang: Language::PYTHON,
+            lang: Language::Python,
             discovery: false,
             description: "Poetry cache".into(),
             path: "Library/Caches/pypoetry".into(),
             results: vec![],
         },
         DiscoveryDefinition {
-            lang: Language::PYTHON,
+            lang: Language::Python,
             discovery: false,
             description: "uv cache".into(),
             path: ".cache/uv".into(),
@@ -79,10 +79,10 @@ pub struct DiscoveryManager<L: PathLoader> {
 }
 
 impl DiscoveryManager<FullyParallelLoader> {
-    pub fn with_default_loader(home: &PathBuf) -> Self {
+    pub fn with_default_loader(home: &Path) -> Self {
         Self {
-            home: home.clone(),
-            loader: FullyParallelLoader::default(),
+            home: home.to_path_buf(),
+            loader: FullyParallelLoader,
             db: FilesDB::new(),
             definitions: default_discovery_definitions(),
         }
@@ -91,9 +91,9 @@ impl DiscoveryManager<FullyParallelLoader> {
 
 impl<L: PathLoader> DiscoveryManager<L> {
     #[allow(dead_code)]
-    pub fn new(loader: L, home: &PathBuf) -> Self {
+    pub fn new(loader: L, home: &Path) -> Self {
         Self {
-            home: home.clone(),
+            home: home.to_path_buf(),
             loader,
             db: FilesDB::new(),
             definitions: default_discovery_definitions(),
@@ -101,17 +101,19 @@ impl<L: PathLoader> DiscoveryManager<L> {
     }
 
     pub fn add_from_config(mut self, config: &Config) -> Self {
-        define_from_section(&self.home, &config.python, Language::PYTHON)
-            .map(|r| self.definitions.extend(r));
-        define_from_section(&self.home, &config.rust, Language::RUST)
-            .map(|r| self.definitions.extend(r));
+        if let Some(r) = define_from_section(&self.home, &config.python, Language::Python) {
+            self.definitions.extend(r)
+        }
+        if let Some(r) = define_from_section(&self.home, &config.rust, Language::Rust) {
+            self.definitions.extend(r)
+        }
 
         self.definitions.extend(
             config
                 .projects
                 .iter()
                 .map(|pd| DiscoveryDefinition {
-                    lang: Language::PROJECTS,
+                    lang: Language::Projects,
                     discovery: true,
                     description: pd.name.clone().unwrap_or("Projects".into()),
                     path: pd.path.clone(),
@@ -158,15 +160,15 @@ impl<L: PathLoader> DiscoveryManager<L> {
                         size,
                     });
                 }
-                (Language::RUST, true) => {
-                    dynamic_discovery(&self.db, pd, rust_detector, Language::RUST);
+                (Language::Rust, true) => {
+                    dynamic_discovery(&self.db, pd, rust_detector, Language::Rust);
                 }
-                (Language::PYTHON, true) => {
-                    dynamic_discovery(&self.db, pd, python_detector, Language::PYTHON);
+                (Language::Python, true) => {
+                    dynamic_discovery(&self.db, pd, python_detector, Language::Python);
                 }
-                (Language::PROJECTS, true) => {
-                    dynamic_discovery(&self.db, pd, rust_detector, Language::RUST);
-                    dynamic_discovery(&self.db, pd, python_detector, Language::PYTHON);
+                (Language::Projects, true) => {
+                    dynamic_discovery(&self.db, pd, rust_detector, Language::Rust);
+                    dynamic_discovery(&self.db, pd, python_detector, Language::Python);
                 }
             }
         }
@@ -179,12 +181,12 @@ where
 {
     let detected_paths: Vec<&PathBuf> = db
         .iter_directories(&pd.path)
-        .filter(|fi| detector(&db, &fi.path))
+        .filter(|fi| detector(db, &fi.path))
         .map(|fi| &fi.path)
         .collect();
     detected_paths.iter().for_each(|p| {
-        let size = db.iter_dir(&p).filter_map(|fi| fi.size).sum();
-        let last_update = db.iter_dir(&p).filter_map(|fi| fi.touched).max();
+        let size = db.iter_dir(p).filter_map(|fi| fi.size).sum();
+        let last_update = db.iter_dir(p).filter_map(|fi| fi.touched).max();
         pd.results.push(DetectedResult {
             lang,
             path: (*p).clone(),
@@ -204,22 +206,19 @@ fn python_detector(db: &FilesDB, path: &Path) -> bool {
 }
 
 fn define_from_section(
-    home: &PathBuf,
+    home: &Path,
     section: &Option<Vec<CustomPathDefinition>>,
     language: Language,
 ) -> Option<Vec<DiscoveryDefinition>> {
-    match &section {
-        None => None,
-        Some(v) => Some(
-            v.iter()
-                .map(|pd| DiscoveryDefinition {
-                    lang: language,
-                    discovery: pd.discovery,
-                    description: pd.name.clone(),
-                    path: home.join(&pd.path),
-                    results: vec![],
-                })
-                .collect::<Vec<_>>(),
-        ),
-    }
+    section.as_ref().map(|v| {
+        v.iter()
+            .map(|pd| DiscoveryDefinition {
+                lang: language,
+                discovery: pd.discovery,
+                description: pd.name.clone(),
+                path: home.join(&pd.path),
+                results: vec![],
+            })
+            .collect::<Vec<_>>()
+    })
 }

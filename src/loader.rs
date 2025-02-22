@@ -2,7 +2,7 @@ use std::path::PathBuf;
 use std::sync::mpsc::channel;
 use std::thread;
 
-use crossbeam;
+use crossbeam::channel;
 use jwalk::rayon::prelude::*;
 use jwalk::{Parallelism, WalkDir};
 
@@ -23,24 +23,22 @@ pub enum LoaderError {
 }
 
 fn walk_dir_paths(directory: &PathBuf) -> Vec<PathBuf> {
-    let paths = WalkDir::new(directory)
+    WalkDir::new(directory)
         .parallelism(Parallelism::Serial)
         .skip_hidden(false)
         .into_iter()
         .filter_map(|res| res.map(|de| de.path()).ok())
-        .collect::<Vec<_>>();
-    paths
+        .collect::<Vec<_>>()
 }
 
 fn walk_dir_file_infos(directory: &PathBuf) -> Vec<FileInfo> {
-    let paths = WalkDir::new(directory)
+    WalkDir::new(directory)
         .parallelism(Parallelism::Serial)
         .skip_hidden(false)
         .into_iter()
         .filter_map(|res| res.map(|de| de.path()).ok())
         .filter_map(|path| FileInfo::try_from(&path).ok())
-        .collect::<Vec<_>>();
-    paths
+        .collect::<Vec<_>>()
 }
 
 #[derive(Default)]
@@ -53,7 +51,7 @@ impl PathLoader for BaseLoader {
         scan_paths
             .into_par_iter()
             .for_each_with(sender, |sender, path| {
-                let infos = walk_dir_file_infos(&path);
+                let infos = walk_dir_file_infos(path);
                 infos
                     .into_iter()
                     .for_each(|fi| sender.send((fi.path.clone(), fi)).unwrap());
@@ -77,10 +75,10 @@ impl FullyParallelLoader {
 
 impl PathLoader for FullyParallelLoader {
     fn load_multiple_paths(&self, scan_paths: &[PathBuf]) -> FilesDB {
-        let (paths_sender, paths_receiver) = crossbeam::channel::unbounded();
-        let (infos_sender, infos_receiver) = crossbeam::channel::unbounded();
+        let (paths_sender, paths_receiver) = channel::unbounded();
+        let (infos_sender, infos_receiver) = channel::unbounded();
 
-        scan_paths.into_iter().for_each(|path| {
+        scan_paths.iter().for_each(|path| {
             let my_paths_sender = paths_sender.clone();
             let path = path.clone();
             thread::spawn(move || {

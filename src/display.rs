@@ -14,7 +14,7 @@ pub fn print_results(definitions: Vec<DiscoveryDefinition>) {
     let mut static_sum: u64 = 0;
 
     for def in definitions {
-        if def.results.len() == 0 {
+        if def.results.is_empty() {
             continue;
         }
         if def.discovery {

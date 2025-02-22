@@ -4,8 +4,7 @@ use std::fs;
 use std::path::PathBuf;
 
 use anyhow::{Context, Result};
-use home;
-use toml;
+use home::home_dir;
 
 use crate::config::Config;
 use crate::discovery::DiscoveryManager;
@@ -24,7 +23,7 @@ fn main() -> Result<()> {
     let config: Config =
         toml::from_str(cfg_data.as_str()).context("Couldn't parse a configuration file.")?;
 
-    let home_dir = home::home_dir().context("Couldn't identify your home directory.")?;
+    let home_dir = home_dir().context("Couldn't identify your home directory.")?;
 
     let definitions = DiscoveryManager::with_default_loader(&home_dir)
         .add_from_config(&config)
