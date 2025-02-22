@@ -40,7 +40,7 @@ pub struct DiscoveryDefinition {
     pub results: Vec<DetectedResult>,
 }
 
-pub trait PathLoader {
+pub trait PathLoader: Default {
     // There should be better encapsulation than this
     fn load_multiple_paths(&self, scan_paths: &[PathBuf]) -> FilesDB;
 }
@@ -82,7 +82,7 @@ impl DiscoveryManager<FullyParallelLoader> {
     pub fn with_default_loader(home: &PathBuf) -> Self {
         Self {
             home: home.clone(),
-            loader: FullyParallelLoader::new(),
+            loader: FullyParallelLoader::default(),
             db: FilesDB::new(),
             definitions: default_discovery_definitions(),
         }

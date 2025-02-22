@@ -43,14 +43,9 @@ fn walk_dir_file_infos(directory: &PathBuf) -> Vec<FileInfo> {
     paths
 }
 
+#[derive(Default)]
 pub struct BaseLoader;
 
-impl BaseLoader {
-    #[allow(dead_code)]
-    pub fn new() -> Self {
-        Self
-    }
-}
 impl PathLoader for BaseLoader {
     fn load_multiple_paths(&self, scan_paths: &[PathBuf]) -> FilesDB {
         let (sender, receiver) = channel();
@@ -73,14 +68,13 @@ impl PathLoader for BaseLoader {
     }
 }
 
+#[derive(Default)]
 pub struct FullyParallelLoader;
 
 impl FullyParallelLoader {
     const NUM_THREADS: usize = 4;
-    pub fn new() -> Self {
-        Self
-    }
 }
+
 impl PathLoader for FullyParallelLoader {
     fn load_multiple_paths(&self, scan_paths: &[PathBuf]) -> FilesDB {
         let (paths_sender, paths_receiver) = crossbeam::channel::unbounded();
