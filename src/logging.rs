@@ -21,6 +21,16 @@ pub enum LoggingLevel {
     Traces,
 }
 
+impl From<u8> for LoggingLevel {
+    fn from(count: u8) -> Self {
+        match count {
+            0 => LoggingLevel::Silent,
+            1 => LoggingLevel::Verbose,
+            2.. => LoggingLevel::Traces,
+        }
+    }
+}
+
 pub fn setup_logging(level: LoggingLevel) -> Result<()> {
     let timer = SinceStart(Instant::now());
 
