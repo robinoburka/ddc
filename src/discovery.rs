@@ -2,6 +2,8 @@ use std::fmt::{Display, Formatter};
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
+use tracing::instrument;
+
 use crate::config::{Config, CustomPathDefinition};
 use crate::files_db::FilesDB;
 use crate::loader::FullyParallelLoader;
@@ -132,12 +134,14 @@ impl<L: PathLoader> DiscoveryManager<L> {
         self.definitions
     }
 
+    #[instrument(level = "debug", skip(self))]
     fn resolve_relative_paths(&mut self) {
         self.definitions.iter_mut().for_each(|def| {
             def.path = self.home.join(&def.path);
         });
     }
 
+    #[instrument(level = "debug", skip(self))]
     fn load_paths(&mut self) {
         let paths = self
             .definitions
@@ -147,6 +151,7 @@ impl<L: PathLoader> DiscoveryManager<L> {
         self.db = self.loader.load_multiple_paths(&paths);
     }
 
+    #[instrument(level = "debug", skip(self))]
     fn discover(&mut self) {
         for pd in self.definitions.iter_mut() {
             match (pd.lang, pd.discovery) {

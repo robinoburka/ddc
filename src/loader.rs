@@ -5,6 +5,7 @@ use std::thread;
 use crossbeam::channel;
 use jwalk::rayon::prelude::*;
 use jwalk::{Parallelism, WalkDir};
+use tracing::{debug, debug_span};
 
 use crate::discovery::PathLoader;
 use crate::file_info::FileInfo;
@@ -82,6 +83,7 @@ impl PathLoader for FullyParallelLoader {
             let my_paths_sender = paths_sender.clone();
             let path = path.clone();
             thread::spawn(move || {
+                let _guard = debug_span!("walk_dir", path = ?path).entered();
                 let paths = walk_dir_paths(&path);
                 paths.into_iter().for_each(|path| {
                     my_paths_sender.send(path).unwrap();
@@ -97,6 +99,8 @@ impl PathLoader for FullyParallelLoader {
                 my_paths_receiver.iter().for_each(|path| {
                     if let Ok(info) = FileInfo::try_from(&path) {
                         my_infos_sender.send((path, info)).unwrap();
+                    } else {
+                        debug!("Failed to load info for {}", path.display());
                     }
                 });
             });
