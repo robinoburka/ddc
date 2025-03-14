@@ -1,4 +1,4 @@
-use clap::{ArgAction, Parser};
+use clap::{ArgAction, Parser, Subcommand};
 
 pub static COMMAND_NAME: &str = "ddc";
 
@@ -8,4 +8,15 @@ pub struct Args {
     /// Sets the level of verbosity (--verbose/-v, -vv)
     #[arg(short = 'v', long = "verbose", action = ArgAction::Count)]
     pub verbosity: u8,
+    #[command(subcommand)]
+    pub command: Option<Commands>,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum Commands {
+    /// Generates a skeleton of the configuration file
+    GenerateConfig,
+
+    /// Analyzes data (default command)
+    Analyze,
 }
