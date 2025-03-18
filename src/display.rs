@@ -3,9 +3,11 @@ use humansize::{DECIMAL, format_size};
 use tabled::settings::object::Rows;
 use tabled::settings::{Alignment, Color, Modify, Panel, Style, object::Cell};
 use tabled::{Table, Tabled};
+use tracing::instrument;
 
 use crate::discovery::{DetectedResult, DiscoveryDefinition};
 
+#[instrument(level = "debug", skip(definitions))]
 pub fn print_results(definitions: Vec<DiscoveryDefinition>) {
     let mut discovery_data = vec![];
     let mut static_data = vec![];
@@ -55,8 +57,8 @@ pub fn print_results(definitions: Vec<DiscoveryDefinition>) {
 
 #[derive(Tabled)]
 struct Record {
-    #[tabled(rename = "Language")]
-    lang: String,
+    #[tabled(rename = "Language", display("tabled::derive::display::option", ""))]
+    lang: Option<String>,
     #[tabled(rename = "Path")]
     path: String,
     #[tabled(rename = "Last change", display("tabled::derive::display::option", ""))]
@@ -78,7 +80,7 @@ struct StaticRecord {
 impl From<&DetectedResult> for Record {
     fn from(value: &DetectedResult) -> Self {
         Self {
-            lang: value.lang.to_string(),
+            lang: value.lang.map(|l| l.to_string()),
             time: value.last_update.map(|t| {
                 DateTime::<Local>::from(t)
                     .format("%Y-%m-%d %H:%M:%S")

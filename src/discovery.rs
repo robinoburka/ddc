@@ -1,33 +1,17 @@
-use std::fmt::{Display, Formatter};
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
 use tracing::instrument;
+use tracing::warn;
 
-use crate::config::{Config, CustomPathDefinition};
+use crate::config::Config;
 use crate::files_db::FilesDB;
 use crate::loader::FullyParallelLoader;
-
-#[derive(Copy, Clone, Debug, PartialEq)]
-pub enum Language {
-    Python,
-    Rust,
-    Projects,
-}
-
-impl Display for Language {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Language::Python => write!(f, "🐍"),
-            Language::Rust => write!(f, "🦀"),
-            Language::Projects => write!(f, ""),
-        }
-    }
-}
+use crate::types::Language;
 
 #[derive(Debug)]
 pub struct DetectedResult {
-    pub lang: Language,
+    pub lang: Option<Language>,
     pub path: PathBuf,
     pub size: u64,
     pub last_update: Option<SystemTime>,
@@ -35,10 +19,10 @@ pub struct DetectedResult {
 
 #[derive(Debug)]
 pub struct DiscoveryDefinition {
-    pub lang: Language,
+    pub path: PathBuf,
     pub discovery: bool,
     pub description: String,
-    pub path: PathBuf,
+    pub lang: Option<Language>,
     pub results: Vec<DetectedResult>,
 }
 
@@ -50,21 +34,21 @@ pub trait PathLoader: Default {
 fn default_discovery_definitions() -> Vec<DiscoveryDefinition> {
     vec![
         DiscoveryDefinition {
-            lang: Language::Rust,
+            lang: Some(Language::Rust),
             discovery: false,
             description: "Cargo registry".into(),
             path: ".cargo/registry".into(),
             results: vec![],
         },
         DiscoveryDefinition {
-            lang: Language::Python,
+            lang: Some(Language::Python),
             discovery: false,
             description: "Poetry cache".into(),
             path: "Library/Caches/pypoetry".into(),
             results: vec![],
         },
         DiscoveryDefinition {
-            lang: Language::Python,
+            lang: Some(Language::Python),
             discovery: false,
             description: "uv cache".into(),
             path: ".cache/uv".into(),
@@ -103,23 +87,28 @@ impl<L: PathLoader> DiscoveryManager<L> {
     }
 
     pub fn add_from_config(mut self, config: &Config) -> Self {
-        if let Some(r) = define_from_section(&self.home, &config.python, Language::Python) {
-            self.definitions.extend(r)
-        }
-        if let Some(r) = define_from_section(&self.home, &config.rust, Language::Rust) {
-            self.definitions.extend(r)
-        }
-
         self.definitions.extend(
             config
-                .projects
+                .paths
                 .iter()
-                .map(|pd| DiscoveryDefinition {
-                    lang: Language::Projects,
-                    discovery: true,
-                    description: pd.name.clone().unwrap_or("Projects".into()),
-                    path: pd.path.clone(),
-                    results: vec![],
+                .map(|pd| {
+                    let lang = match pd.language.as_ref() {
+                        None => None,
+                        Some(lang) => match Language::try_from(lang) {
+                            Ok(l) => Some(l),
+                            Err(e) => {
+                                warn!("Unknown language definition: {}", e);
+                                None
+                            }
+                        },
+                    };
+                    DiscoveryDefinition {
+                        lang,
+                        discovery: pd.discovery,
+                        description: pd.name.clone().unwrap_or("Projects".into()),
+                        path: pd.path.clone(),
+                        results: vec![],
+                    }
                 })
                 .collect::<Vec<_>>(),
         );
@@ -154,27 +143,18 @@ impl<L: PathLoader> DiscoveryManager<L> {
     #[instrument(level = "debug", skip(self))]
     fn discover(&mut self) {
         for pd in self.definitions.iter_mut() {
-            match (pd.lang, pd.discovery) {
-                (_, false) => {
-                    let size = self.db.iter_dir(&pd.path).filter_map(|fi| fi.size).sum();
-                    let last_update = self.db.iter_dir(&pd.path).filter_map(|fi| fi.touched).max();
-                    pd.results.push(DetectedResult {
-                        lang: pd.lang,
-                        path: pd.path.clone(),
-                        last_update,
-                        size,
-                    });
-                }
-                (Language::Rust, true) => {
-                    dynamic_discovery(&self.db, pd, rust_detector, Language::Rust);
-                }
-                (Language::Python, true) => {
-                    dynamic_discovery(&self.db, pd, python_detector, Language::Python);
-                }
-                (Language::Projects, true) => {
-                    dynamic_discovery(&self.db, pd, rust_detector, Language::Rust);
-                    dynamic_discovery(&self.db, pd, python_detector, Language::Python);
-                }
+            if pd.discovery {
+                dynamic_discovery(&self.db, pd, rust_detector, Language::Rust);
+                dynamic_discovery(&self.db, pd, python_detector, Language::Python);
+            } else {
+                let size = self.db.iter_dir(&pd.path).filter_map(|fi| fi.size).sum();
+                let last_update = self.db.iter_dir(&pd.path).filter_map(|fi| fi.touched).max();
+                pd.results.push(DetectedResult {
+                    lang: pd.lang,
+                    path: pd.path.clone(),
+                    last_update,
+                    size,
+                });
             }
         }
     }
@@ -193,7 +173,7 @@ where
         let size = db.iter_dir(p).filter_map(|fi| fi.size).sum();
         let last_update = db.iter_dir(p).filter_map(|fi| fi.touched).max();
         pd.results.push(DetectedResult {
-            lang,
+            lang: Some(lang),
             path: (*p).clone(),
             last_update,
             size,
@@ -210,20 +190,3 @@ fn python_detector(db: &FilesDB, path: &Path) -> bool {
     db.exists(&path.join("bin/python"))
 }
 
-fn define_from_section(
-    home: &Path,
-    section: &Option<Vec<CustomPathDefinition>>,
-    language: Language,
-) -> Option<Vec<DiscoveryDefinition>> {
-    section.as_ref().map(|v| {
-        v.iter()
-            .map(|pd| DiscoveryDefinition {
-                lang: language,
-                discovery: pd.discovery,
-                description: pd.name.clone(),
-                path: home.join(&pd.path),
-                results: vec![],
-            })
-            .collect::<Vec<_>>()
-    })
-}

@@ -35,7 +35,7 @@ pub fn setup_logging(level: LoggingLevel) -> Result<()> {
     let timer = SinceStart(Instant::now());
 
     let (log_level, tracing_level) = match level {
-        LoggingLevel::Silent => (tracing::Level::ERROR, FmtSpan::NONE),
+        LoggingLevel::Silent => (tracing::Level::WARN, FmtSpan::NONE),
         LoggingLevel::Verbose => (tracing::Level::DEBUG, FmtSpan::NONE),
         LoggingLevel::Traces => (tracing::Level::DEBUG, FmtSpan::CLOSE | FmtSpan::ENTER),
     };
