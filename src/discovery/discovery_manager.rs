@@ -1,60 +1,18 @@
 use std::path::{Path, PathBuf};
-use std::time::SystemTime;
 
-use tracing::instrument;
-use tracing::warn;
+use tracing::{instrument, warn};
 
 use crate::config::Config;
+use crate::discovery::default_definitions::default_discovery_definitions;
+use crate::discovery::detectors::{python_detector, rust_detector};
+use crate::discovery::{DetectedResult, DiscoveryDefinition};
 use crate::files_db::FilesDB;
 use crate::loader::FullyParallelLoader;
 use crate::types::Language;
 
-#[derive(Debug)]
-pub struct DetectedResult {
-    pub lang: Option<Language>,
-    pub path: PathBuf,
-    pub size: u64,
-    pub last_update: Option<SystemTime>,
-}
-
-#[derive(Debug)]
-pub struct DiscoveryDefinition {
-    pub path: PathBuf,
-    pub discovery: bool,
-    pub description: String,
-    pub lang: Option<Language>,
-    pub results: Vec<DetectedResult>,
-}
-
 pub trait PathLoader: Default {
     // There should be better encapsulation than this
     fn load_multiple_paths(&self, scan_paths: &[PathBuf]) -> FilesDB;
-}
-
-fn default_discovery_definitions() -> Vec<DiscoveryDefinition> {
-    vec![
-        DiscoveryDefinition {
-            lang: Some(Language::Rust),
-            discovery: false,
-            description: "Cargo registry".into(),
-            path: ".cargo/registry".into(),
-            results: vec![],
-        },
-        DiscoveryDefinition {
-            lang: Some(Language::Python),
-            discovery: false,
-            description: "Poetry cache".into(),
-            path: "Library/Caches/pypoetry".into(),
-            results: vec![],
-        },
-        DiscoveryDefinition {
-            lang: Some(Language::Python),
-            discovery: false,
-            description: "uv cache".into(),
-            path: ".cache/uv".into(),
-            results: vec![],
-        },
-    ]
 }
 
 pub struct DiscoveryManager<L: PathLoader> {
@@ -180,13 +138,3 @@ where
         });
     });
 }
-
-fn rust_detector(db: &FilesDB, path: &Path) -> bool {
-    path.ends_with("target")
-        && (db.is_dir(&path.join("debug/build")) || db.is_dir(&path.join("release/build")))
-}
-
-fn python_detector(db: &FilesDB, path: &Path) -> bool {
-    db.exists(&path.join("bin/python"))
-}
-
