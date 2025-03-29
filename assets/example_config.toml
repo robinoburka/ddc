@@ -1,0 +1,26 @@
+# Provide all paths where automated discovery should be performed.
+[[paths]]
+path = "projects/"  # All paths are relative to your home directory.
+discovery = true  # Turns on automated discovery.
+
+[[paths]]
+path = "work/"
+discovery = true
+
+# Not only project directories can be provided.
+# You can also provide paths specific to your local setup.
+# E.g., if you collect all virtualenvs in a separate directory.
+# It's suitable for tools like virtualenvwrapper or Poetry.
+[[paths]]
+name = "venvs custom location"  # Name is optional. It's displayed in the table with tools.
+path = ".virtualenvs/"  # All paths are relative to your home directory.
+discovery = true  # Turns on automated discovery.
+
+# Also, you can ask for a summary of a particular path.
+# This will be displayed in the table with tools.
+[[paths]]
+name = "venvs custom location"  # Name is optional, but recommended. It's displayed in the table with tools.
+path = ".virtualenvs/"  # All paths are relative to your home directory.
+discovery = false  # Turns off automated discovery. It enables you to get just the summary of the path.
+language = "python"  # Language is optional. It just provides a nice visual representation in an output table.
+# Currently, 'python' and 'rust' languages are supported.
