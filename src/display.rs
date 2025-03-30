@@ -24,10 +24,15 @@ pub fn print_results(definitions: Vec<DiscoveryDefinition>) {
             discovery_data.extend(def.results.iter().map(Record::from));
         } else {
             static_sum += def.results.iter().map(|r| r.size).sum::<u64>();
-            static_data.extend(def.results.iter().map(|d| StaticRecord {
-                description: def.description.clone(),
-                record: Record::from(d),
-            }));
+            static_data.extend(
+                def.results
+                    .iter()
+                    .filter(|d| d.size != 0)
+                    .map(|d| StaticRecord {
+                        description: def.description.clone(),
+                        record: Record::from(d),
+                    }),
+            );
         }
     }
 
