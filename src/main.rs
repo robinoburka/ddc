@@ -6,7 +6,7 @@ use home::home_dir;
 use tracing::debug;
 
 use crate::analyze::analyze;
-use crate::cli::{Args, Commands};
+use crate::cli::{AnalyzeArgs, Args, Commands};
 use crate::generate_config::generate_config;
 use crate::logging::{LoggingLevel, setup_logging};
 
@@ -32,8 +32,8 @@ fn main() -> anyhow::Result<()> {
 
     match args.command {
         Some(Commands::GenerateConfig) => generate_config(&home_dir)?,
-        Some(Commands::Analyze) => analyze(&home_dir)?,
-        None => analyze(&home_dir)?,
+        Some(Commands::Analyze(cmd_args)) => analyze(cmd_args, &home_dir)?,
+        None => analyze(AnalyzeArgs::default(), &home_dir)?,
     };
 
     Ok(())

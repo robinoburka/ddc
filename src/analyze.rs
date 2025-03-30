@@ -1,12 +1,14 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use owo_colors::OwoColorize;
 use tracing::{debug, error};
 
-use crate::cli::COMMAND_NAME;
+use crate::cli::{AnalyzeArgs, COMMAND_NAME};
 use crate::config::{Config, get_config_file_candidates};
-use crate::discovery::DiscoveryManager;
+use crate::discovery::{DiscoveryManager, default_discovery_definitions};
 use crate::display::print_results;
+
 #[derive(thiserror::Error, Debug)]
 pub enum AnalyzeError {
     #[error(
@@ -25,7 +27,12 @@ pub enum AnalyzeError {
         inner: toml::de::Error,
     },
 }
-pub fn analyze(home_dir: &Path) -> Result<(), AnalyzeError> {
+pub fn analyze(args: AnalyzeArgs, home_dir: &Path) -> Result<(), AnalyzeError> {
+    if args.show_definitions {
+        _show_default_definitions();
+        return Ok(());
+    }
+
     let candidates = get_config_file_candidates(home_dir);
     let Some(cfg_path) = _find_config_file(&candidates) else {
         error!("Configuration file not found");
@@ -43,6 +50,20 @@ pub fn analyze(home_dir: &Path) -> Result<(), AnalyzeError> {
     print_results(definitions);
 
     Ok(())
+}
+
+fn _show_default_definitions() {
+    default_discovery_definitions()
+        .iter()
+        .for_each(|definition| {
+            println!(
+                "{} {} ({}): {}",
+                definition.lang.map(|l| l.to_string()).unwrap_or_default(),
+                definition.description.bold(),
+                if definition.discovery { "🔭" } else { "🧰" },
+                definition.path.display().dimmed()
+            );
+        })
 }
 
 pub fn _find_config_file(candidates: &[PathBuf]) -> Option<PathBuf> {
