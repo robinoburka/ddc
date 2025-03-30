@@ -25,7 +25,7 @@ pub enum AnalyzeError {
         inner: toml::de::Error,
     },
 }
-pub fn analyse(home_dir: &Path) -> Result<(), AnalyzeError> {
+pub fn analyze(home_dir: &Path) -> Result<(), AnalyzeError> {
     let candidates = get_config_file_candidates(home_dir);
     let Some(cfg_path) = _find_config_file(&candidates) else {
         error!("Configuration file not found");

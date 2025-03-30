@@ -5,7 +5,7 @@ use clap::Parser;
 use home::home_dir;
 use tracing::debug;
 
-use crate::analyze::analyse;
+use crate::analyze::analyze;
 use crate::cli::{Args, Commands};
 use crate::generate_config::generate_config;
 use crate::logging::{LoggingLevel, setup_logging};
@@ -32,8 +32,8 @@ fn main() -> anyhow::Result<()> {
 
     match args.command {
         Some(Commands::GenerateConfig) => generate_config(&home_dir)?,
-        Some(Commands::Analyze) => analyse(&home_dir)?,
-        None => analyse(&home_dir)?,
+        Some(Commands::Analyze) => analyze(&home_dir)?,
+        None => analyze(&home_dir)?,
     };
 
     Ok(())
