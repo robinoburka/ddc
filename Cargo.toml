@@ -2,6 +2,8 @@
 name = "ddc"
 version = "0.1.0"
 edition = "2024"
+readme = "README.md"
+license = "MIT"
 
 [profile.profiling]
 inherits = "release"
