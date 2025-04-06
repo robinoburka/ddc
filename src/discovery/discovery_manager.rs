@@ -1,5 +1,6 @@
 use std::path::{Path, PathBuf};
-
+use std::thread;
+use indicatif::ProgressBar;
 use tracing::{instrument, warn};
 
 use crate::config::Config;
@@ -18,6 +19,7 @@ pub trait PathLoader: Default {
 pub struct DiscoveryManager<L: PathLoader> {
     home: PathBuf,
     loader: L,
+    progress_bar: ProgressBar,
     db: FilesDB,
     definitions: Vec<DiscoveryDefinition>,
 }
@@ -26,7 +28,8 @@ impl DiscoveryManager<FullyParallelLoader> {
     pub fn with_default_loader(home: &Path) -> Self {
         Self {
             home: home.to_path_buf(),
-            loader: FullyParallelLoader,
+            loader: FullyParallelLoader::default(),
+            progress_bar: ProgressBar::new(1024),
             db: FilesDB::new(),
             definitions: default_discovery_definitions(),
         }
@@ -39,10 +42,16 @@ impl<L: PathLoader> DiscoveryManager<L> {
         Self {
             home: home.to_path_buf(),
             loader,
+            progress_bar: ProgressBar::new_spinner(),
             db: FilesDB::new(),
             definitions: default_discovery_definitions(),
         }
     }
+
+    // pub fn with_progress_bar(mut self, progress_bar: ProgressBar) -> Self {
+    //     self.progress_bar = Some(progress_bar);
+    //     self
+    // }
 
     pub fn add_from_config(mut self, config: &Config) -> Self {
         self.definitions.extend(
@@ -76,6 +85,7 @@ impl<L: PathLoader> DiscoveryManager<L> {
     pub fn collect(mut self) -> Vec<DiscoveryDefinition> {
         self.resolve_relative_paths();
         self.load_paths();
+        self.progress_bar.set_length(self.definitions.len() as u64);
         self.discover();
 
         self.definitions
@@ -101,6 +111,8 @@ impl<L: PathLoader> DiscoveryManager<L> {
     #[instrument(level = "debug", skip(self))]
     fn discover(&mut self) {
         for pd in self.definitions.iter_mut() {
+            thread::sleep(std::time::Duration::from_millis(1000));
+            self.progress_bar.inc(1);
             if pd.discovery {
                 dynamic_discovery(&self.db, pd, rust_detector, Language::Rust);
                 dynamic_discovery(&self.db, pd, python_detector, Language::Python);

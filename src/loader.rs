@@ -1,8 +1,10 @@
 use std::path::PathBuf;
 use std::sync::mpsc::channel;
+use std::sync::{Arc, Mutex};
 use std::thread;
 
 use crossbeam::channel;
+use indicatif::{ProgressBar, ProgressStyle};
 use jwalk::rayon::prelude::*;
 use jwalk::{Parallelism, WalkDir};
 use tracing::{debug, debug_span};
@@ -67,9 +69,19 @@ impl PathLoader for BaseLoader {
     }
 }
 
-#[derive(Default)]
-pub struct FullyParallelLoader;
+// #[derive(Default)]
+pub struct FullyParallelLoader{
+    pb: Arc<Mutex<ProgressBar>>,
+}
 
+impl Default for FullyParallelLoader {
+    fn default() -> Self {
+        let pb = ProgressBar::new_spinner();
+        Self {
+            pb: Arc::new(Mutex::new(pb)),
+        }
+    }
+}
 impl FullyParallelLoader {
     const NUM_THREADS: usize = 4;
 }
@@ -79,15 +91,22 @@ impl PathLoader for FullyParallelLoader {
         let (paths_sender, paths_receiver) = channel::unbounded();
         let (infos_sender, infos_receiver) = channel::unbounded();
 
+        {
+            self.pb.lock().unwrap().set_position(scan_paths.len() as u64);
+        }
+
         scan_paths.iter().for_each(|path| {
             let my_paths_sender = paths_sender.clone();
             let path = path.clone();
+            let my_pb = self.pb.clone();
             thread::spawn(move || {
                 let _guard = debug_span!("walk_dir", path = ?path).entered();
                 let paths = walk_dir_paths(&path);
                 paths.into_iter().for_each(|path| {
                     my_paths_sender.send(path).unwrap();
-                })
+                });
+                thread::sleep(std::time::Duration::from_millis(1000));
+                my_pb.lock().unwrap().inc(1);
             });
         });
         drop(paths_sender);
@@ -113,6 +132,8 @@ impl PathLoader for FullyParallelLoader {
             db.add(path, info);
         });
         drop(infos_receiver);
+
+        self.pb.lock().unwrap().finish();
 
         db
     }
