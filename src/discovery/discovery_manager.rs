@@ -1,5 +1,7 @@
 use std::path::{Path, PathBuf};
-
+use std::sync::{Arc, Mutex};
+use std::thread;
+use indicatif::ProgressBar;
 use tracing::{instrument, warn};
 
 use crate::config::Config;
@@ -8,16 +10,21 @@ use crate::discovery::detectors::{python_detector, rust_detector};
 use crate::discovery::{DetectedResult, DiscoveryDefinition};
 use crate::files_db::FilesDB;
 use crate::loader::FullyParallelLoader;
+use crate::progress_report::ProgressReport;
 use crate::types::Language;
 
-pub trait PathLoader: Default {
+pub trait PathLoader {
     // There should be better encapsulation than this
+    fn new(progress_report: Arc<Mutex<ProgressReport>>) -> Self
+    where
+        Self: Sized;
     fn load_multiple_paths(&self, scan_paths: &[PathBuf]) -> FilesDB;
 }
 
 pub struct DiscoveryManager<L: PathLoader> {
     home: PathBuf,
     loader: L,
+    progress: Arc<Mutex<ProgressReport>>,
     db: FilesDB,
     definitions: Vec<DiscoveryDefinition>,
 }
@@ -26,7 +33,8 @@ impl DiscoveryManager<FullyParallelLoader> {
     pub fn with_default_loader(home: &Path) -> Self {
         Self {
             home: home.to_path_buf(),
-            loader: FullyParallelLoader,
+            loader: FullyParallelLoader::default(),
+            progress: Arc::new(Mutex::new(ProgressReport::new())),
             db: FilesDB::new(),
             definitions: default_discovery_definitions(),
         }
@@ -39,10 +47,16 @@ impl<L: PathLoader> DiscoveryManager<L> {
         Self {
             home: home.to_path_buf(),
             loader,
+            progress: Arc::new(Mutex::new(ProgressReport::new())),
             db: FilesDB::new(),
             definitions: default_discovery_definitions(),
         }
     }
+
+    // pub fn with_progress_bar(mut self, progress_bar: ProgressBar) -> Self {
+    //     self.progress_bar = Some(progress_bar);
+    //     self
+    // }
 
     pub fn add_from_config(mut self, config: &Config) -> Self {
         self.definitions.extend(
@@ -74,6 +88,10 @@ impl<L: PathLoader> DiscoveryManager<L> {
     }
 
     pub fn collect(mut self) -> Vec<DiscoveryDefinition> {
+        {
+            let progress = self.progress.lock().unwrap();
+            progress.start_scan(self.definitions.len());
+        }
         self.resolve_relative_paths();
         self.load_paths();
         self.discover();
@@ -101,6 +119,7 @@ impl<L: PathLoader> DiscoveryManager<L> {
     #[instrument(level = "debug", skip(self))]
     fn discover(&mut self) {
         for pd in self.definitions.iter_mut() {
+            self.progress_bar.inc(1);
             if pd.discovery {
                 dynamic_discovery(&self.db, pd, rust_detector, Language::Rust);
                 dynamic_discovery(&self.db, pd, python_detector, Language::Python);

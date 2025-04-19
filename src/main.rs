@@ -21,6 +21,7 @@ mod generate_config;
 mod loader;
 mod logging;
 mod types;
+mod progress_report;
 
 fn main() -> anyhow::Result<()> {
     let args = Args::parse();
