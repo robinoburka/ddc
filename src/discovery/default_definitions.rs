@@ -1,8 +1,10 @@
+use std::path::Path;
+
 use crate::discovery::DiscoveryDefinition;
 use crate::types::Language;
 
-pub fn default_discovery_definitions() -> Vec<DiscoveryDefinition> {
-    vec![
+pub fn default_discovery_definitions(home: &Path) -> Vec<DiscoveryDefinition> {
+    let mut definitions = vec![
         // Rust
         ////////////////////////////////////////
         // Cargo registry
@@ -49,5 +51,11 @@ pub fn default_discovery_definitions() -> Vec<DiscoveryDefinition> {
             description: "uv cache".into(),
             path: ".cache/uv".into(),
         },
-    ]
+    ];
+
+    for def in definitions.iter_mut() {
+        def.path = home.join(&def.path)
+    }
+
+    definitions
 }

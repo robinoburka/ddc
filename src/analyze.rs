@@ -31,7 +31,7 @@ pub enum AnalyzeError {
 }
 pub fn analyze(args: AnalyzeArgs, home_dir: &Path) -> Result<(), AnalyzeError> {
     if args.show_definitions {
-        show_default_definitions();
+        show_default_definitions(home_dir);
         return Ok(());
     }
 
@@ -58,8 +58,8 @@ pub fn analyze(args: AnalyzeArgs, home_dir: &Path) -> Result<(), AnalyzeError> {
     Ok(())
 }
 
-fn show_default_definitions() {
-    default_discovery_definitions()
+fn show_default_definitions(home: &Path) {
+    default_discovery_definitions(home)
         .iter()
         .for_each(|definition| {
             println!(

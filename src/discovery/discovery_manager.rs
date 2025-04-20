@@ -1,5 +1,10 @@
+use std::ops::Deref;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::thread;
 
+use crossbeam::channel;
+use crossbeam::channel::Sender;
 use tracing::{instrument, warn};
 
 use crate::config::Config;
@@ -19,8 +24,8 @@ pub trait PathLoader: Default {
 pub struct DiscoveryManager<L: PathLoader> {
     home: PathBuf,
     loader: L,
-    db: FilesDB,
-    definitions: Vec<DiscoveryDefinition>,
+    db: Arc<FilesDB>,
+    definitions: Arc<Vec<DiscoveryDefinition>>,
 }
 
 impl DiscoveryManager<FullyParallelLoader> {
@@ -28,8 +33,8 @@ impl DiscoveryManager<FullyParallelLoader> {
         Self {
             home: home.to_path_buf(),
             loader: FullyParallelLoader,
-            db: FilesDB::new(),
-            definitions: default_discovery_definitions(),
+            db: Arc::new(FilesDB::new()),
+            definitions: Arc::new(default_discovery_definitions(home)),
         }
     }
 }
@@ -40,50 +45,48 @@ impl<L: PathLoader> DiscoveryManager<L> {
         Self {
             home: home.to_path_buf(),
             loader,
-            db: FilesDB::new(),
-            definitions: default_discovery_definitions(),
+            db: Arc::new(FilesDB::new()),
+            definitions: Arc::new(default_discovery_definitions(home)),
         }
     }
 
     pub fn add_from_config(mut self, config: &Config) -> Self {
-        self.definitions.extend(
-            config
-                .paths
-                .iter()
-                .map(|pd| {
-                    let lang = match pd.language.as_ref() {
-                        None => None,
-                        Some(lang) => match Language::try_from(lang) {
-                            Ok(l) => Some(l),
-                            Err(e) => {
-                                warn!("Unknown language definition: {}", e);
-                                None
-                            }
-                        },
-                    };
-                    DiscoveryDefinition {
-                        lang,
-                        discovery: pd.discovery,
-                        description: pd.name.clone().unwrap_or("Projects".into()),
-                        path: pd.path.clone(),
-                    }
-                })
-                .collect::<Vec<_>>(),
-        );
+        let config_definitions = config
+            .paths
+            .iter()
+            .map(|pd| {
+                let lang = match pd.language.as_ref() {
+                    None => None,
+                    Some(lang) => match Language::try_from(lang) {
+                        Ok(l) => Some(l),
+                        Err(e) => {
+                            warn!("Unknown language definition: {}", e);
+                            None
+                        }
+                    },
+                };
+                DiscoveryDefinition {
+                    lang,
+                    discovery: pd.discovery,
+                    description: pd.name.clone().unwrap_or("Projects".into()),
+                    // path: pd.path.clone(),
+                    path: self.home.join(&pd.path),
+                }
+            })
+            .collect::<Vec<_>>();
+
+        self.definitions = Arc::try_unwrap(self.definitions)
+            .map(|mut inner| {
+                inner.extend(config_definitions);
+                Arc::new(inner)
+            })
+            .expect("Arc is still shared. Programmer error?");
         self
     }
 
     pub fn collect(mut self) -> Vec<DiscoveryResult> {
-        self.resolve_relative_paths();
         self.load_paths();
         self.discover()
-    }
-
-    #[instrument(level = "debug", skip(self))]
-    fn resolve_relative_paths(&mut self) {
-        self.definitions.iter_mut().for_each(|def| {
-            def.path = self.home.join(&def.path);
-        });
     }
 
     #[instrument(level = "debug", skip(self))]
@@ -93,69 +96,95 @@ impl<L: PathLoader> DiscoveryManager<L> {
             .iter()
             .map(|def| def.path.clone())
             .collect::<Vec<_>>();
-        self.db = self.loader.load_multiple_paths(&paths);
+        self.db = Arc::new(self.loader.load_multiple_paths(&paths));
     }
 
     #[instrument(level = "debug", skip(self))]
     fn discover(&mut self) -> Vec<DiscoveryResult> {
         let mut results = vec![];
-        for pd in self.definitions.iter() {
-            if pd.discovery {
-                results.extend(dynamic_discovery(
-                    &self.db,
-                    &pd.path,
-                    rust_detector,
-                    Language::Rust,
-                ));
-                results.extend(dynamic_discovery(
-                    &self.db,
-                    &pd.path,
-                    python_detector,
-                    Language::Python,
-                ));
-            } else {
-                let size = self.db.iter_dir(&pd.path).filter_map(|fi| fi.size).sum();
-                let last_update = self.db.iter_dir(&pd.path).filter_map(|fi| fi.touched).max();
-                results.push(DiscoveryResult {
-                    result_type: ResultType::Static(pd.description.clone()),
-                    lang: pd.lang,
-                    path: pd.path.clone(),
-                    last_update,
-                    size,
-                });
+        let (tx, rx) = channel::unbounded();
+        spawn_discovery_thread(
+            self.db.clone(),
+            self.definitions.clone(),
+            rust_detector,
+            Language::Rust,
+            tx.clone(),
+        );
+        spawn_discovery_thread(
+            self.db.clone(),
+            self.definitions.clone(),
+            python_detector,
+            Language::Python,
+            tx.clone(),
+        );
+
+        let db = self.db.clone();
+        let definitions = self.definitions.clone();
+        thread::spawn(move || {
+            for pd in definitions.iter() {
+                if !pd.discovery {
+                    let size = db.iter_dir(&pd.path).filter_map(|fi| fi.size).sum();
+                    let last_update = db.iter_dir(&pd.path).filter_map(|fi| fi.touched).max();
+                    let r = DiscoveryResult {
+                        result_type: ResultType::Static(pd.description.clone()),
+                        lang: pd.lang,
+                        path: pd.path.clone(),
+                        last_update,
+                        size,
+                    };
+                    tx.send(r).unwrap();
+                }
             }
+        });
+
+        for res in rx.iter() {
+            results.push(res);
         }
 
         results
     }
 }
 
-fn dynamic_discovery<D>(
-    db: &FilesDB,
-    path: &PathBuf,
+fn spawn_discovery_thread(
+    db: Arc<FilesDB>,
+    definitions: Arc<Vec<DiscoveryDefinition>>,
+    detector: fn(&FilesDB, &Path) -> bool,
+    lang: Language,
+    tx: Sender<DiscoveryResult>,
+) {
+    thread::spawn(move || {
+        discovery_thread(db, definitions, detector, lang, tx);
+    });
+}
+
+fn discovery_thread<D>(
+    db: Arc<FilesDB>,
+    discovery_definitions: Arc<Vec<DiscoveryDefinition>>,
     detector: D,
     lang: Language,
-) -> Vec<DiscoveryResult>
-where
+    tx: Sender<DiscoveryResult>,
+) where
     D: Fn(&FilesDB, &Path) -> bool,
 {
-    let detected_paths: Vec<&PathBuf> = db
-        .iter_directories(path)
-        .filter(|fi| detector(db, &fi.path))
-        .map(|fi| &fi.path)
-        .collect();
-    detected_paths
-        .iter()
-        .map(|p| {
-            let size = db.iter_dir(p).filter_map(|fi| fi.size).sum();
-            let last_update = db.iter_dir(p).filter_map(|fi| fi.touched).max();
-            DiscoveryResult {
-                result_type: ResultType::Discovery,
-                lang: Some(lang),
-                path: (*p).clone(),
-                last_update,
-                size,
-            }
-        })
-        .collect::<Vec<_>>()
+    for definition in discovery_definitions.iter() {
+        if definition.discovery {
+            let detected_paths: Vec<&PathBuf> = db
+                .iter_directories(&definition.path)
+                .filter(|fi| detector(db.deref(), &fi.path))
+                .map(|fi| &fi.path)
+                .collect();
+            detected_paths.iter().for_each(|p| {
+                let size = db.iter_dir(p).filter_map(|fi| fi.size).sum();
+                let last_update = db.iter_dir(p).filter_map(|fi| fi.touched).max();
+                let r = DiscoveryResult {
+                    result_type: ResultType::Discovery,
+                    lang: Some(lang),
+                    path: (*p).clone(),
+                    last_update,
+                    size,
+                };
+                tx.send(r).unwrap();
+            });
+        }
+    }
 }
