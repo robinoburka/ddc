@@ -4,11 +4,18 @@ use std::time::SystemTime;
 use crate::types::Language;
 
 #[derive(Debug)]
-pub struct DetectedResult {
-    pub lang: Option<Language>,
+pub struct DiscoveryResult {
+    pub result_type: ResultType,
     pub path: PathBuf,
+    pub lang: Option<Language>,
     pub size: u64,
     pub last_update: Option<SystemTime>,
+}
+
+#[derive(Debug)]
+pub enum ResultType {
+    Discovery,
+    Static(String),
 }
 
 #[derive(Debug)]
@@ -17,5 +24,4 @@ pub struct DiscoveryDefinition {
     pub discovery: bool,
     pub description: String,
     pub lang: Option<Language>,
-    pub results: Vec<DetectedResult>,
 }

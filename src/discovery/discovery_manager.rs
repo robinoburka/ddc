@@ -5,7 +5,8 @@ use tracing::{instrument, warn};
 use crate::config::Config;
 use crate::discovery::default_definitions::default_discovery_definitions;
 use crate::discovery::detectors::{python_detector, rust_detector};
-use crate::discovery::{DetectedResult, DiscoveryDefinition};
+use crate::discovery::discovery_definitions::ResultType;
+use crate::discovery::{DiscoveryDefinition, DiscoveryResult};
 use crate::files_db::FilesDB;
 use crate::loader::FullyParallelLoader;
 use crate::types::Language;
@@ -65,7 +66,6 @@ impl<L: PathLoader> DiscoveryManager<L> {
                         discovery: pd.discovery,
                         description: pd.name.clone().unwrap_or("Projects".into()),
                         path: pd.path.clone(),
-                        results: vec![],
                     }
                 })
                 .collect::<Vec<_>>(),
@@ -73,12 +73,10 @@ impl<L: PathLoader> DiscoveryManager<L> {
         self
     }
 
-    pub fn collect(mut self) -> Vec<DiscoveryDefinition> {
+    pub fn collect(mut self) -> Vec<DiscoveryResult> {
         self.resolve_relative_paths();
         self.load_paths();
-        self.discover();
-
-        self.definitions
+        self.discover()
     }
 
     #[instrument(level = "debug", skip(self))]
@@ -99,15 +97,27 @@ impl<L: PathLoader> DiscoveryManager<L> {
     }
 
     #[instrument(level = "debug", skip(self))]
-    fn discover(&mut self) {
-        for pd in self.definitions.iter_mut() {
+    fn discover(&mut self) -> Vec<DiscoveryResult> {
+        let mut results = vec![];
+        for pd in self.definitions.iter() {
             if pd.discovery {
-                dynamic_discovery(&self.db, pd, rust_detector, Language::Rust);
-                dynamic_discovery(&self.db, pd, python_detector, Language::Python);
+                results.extend(dynamic_discovery(
+                    &self.db,
+                    &pd.path,
+                    rust_detector,
+                    Language::Rust,
+                ));
+                results.extend(dynamic_discovery(
+                    &self.db,
+                    &pd.path,
+                    python_detector,
+                    Language::Python,
+                ));
             } else {
                 let size = self.db.iter_dir(&pd.path).filter_map(|fi| fi.size).sum();
                 let last_update = self.db.iter_dir(&pd.path).filter_map(|fi| fi.touched).max();
-                pd.results.push(DetectedResult {
+                results.push(DiscoveryResult {
+                    result_type: ResultType::Static(pd.description.clone()),
                     lang: pd.lang,
                     path: pd.path.clone(),
                     last_update,
@@ -115,26 +125,37 @@ impl<L: PathLoader> DiscoveryManager<L> {
                 });
             }
         }
+
+        results
     }
 }
 
-fn dynamic_discovery<D>(db: &FilesDB, pd: &mut DiscoveryDefinition, detector: D, lang: Language)
+fn dynamic_discovery<D>(
+    db: &FilesDB,
+    path: &PathBuf,
+    detector: D,
+    lang: Language,
+) -> Vec<DiscoveryResult>
 where
     D: Fn(&FilesDB, &Path) -> bool,
 {
     let detected_paths: Vec<&PathBuf> = db
-        .iter_directories(&pd.path)
+        .iter_directories(path)
         .filter(|fi| detector(db, &fi.path))
         .map(|fi| &fi.path)
         .collect();
-    detected_paths.iter().for_each(|p| {
-        let size = db.iter_dir(p).filter_map(|fi| fi.size).sum();
-        let last_update = db.iter_dir(p).filter_map(|fi| fi.touched).max();
-        pd.results.push(DetectedResult {
-            lang: Some(lang),
-            path: (*p).clone(),
-            last_update,
-            size,
-        });
-    });
+    detected_paths
+        .iter()
+        .map(|p| {
+            let size = db.iter_dir(p).filter_map(|fi| fi.size).sum();
+            let last_update = db.iter_dir(p).filter_map(|fi| fi.touched).max();
+            DiscoveryResult {
+                result_type: ResultType::Discovery,
+                lang: Some(lang),
+                path: (*p).clone(),
+                last_update,
+                size,
+            }
+        })
+        .collect::<Vec<_>>()
 }

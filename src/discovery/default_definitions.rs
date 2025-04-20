@@ -11,7 +11,6 @@ pub fn default_discovery_definitions() -> Vec<DiscoveryDefinition> {
             discovery: false,
             description: "Cargo registry".into(),
             path: ".cargo/registry".into(),
-            results: vec![],
         },
         // Python
         ////////////////////////////////////////
@@ -21,7 +20,6 @@ pub fn default_discovery_definitions() -> Vec<DiscoveryDefinition> {
             discovery: false,
             description: "Poetry cache".into(),
             path: "Library/Caches/pypoetry".into(),
-            results: vec![],
         },
         // Poetry on macOS - default virtualenvs
         DiscoveryDefinition {
@@ -29,7 +27,6 @@ pub fn default_discovery_definitions() -> Vec<DiscoveryDefinition> {
             discovery: true,
             description: "Poetry virtualenvs".into(),
             path: "Library/Caches/pypoetry/virtualenvs".into(),
-            results: vec![],
         },
         // Poetry on Unix - cache
         DiscoveryDefinition {
@@ -37,7 +34,6 @@ pub fn default_discovery_definitions() -> Vec<DiscoveryDefinition> {
             discovery: false,
             description: "Poetry cache".into(),
             path: ".cache/pypoetry".into(),
-            results: vec![],
         },
         // Poetry on Unix - default virtualenvs
         DiscoveryDefinition {
@@ -45,7 +41,6 @@ pub fn default_discovery_definitions() -> Vec<DiscoveryDefinition> {
             discovery: true,
             description: "Poetry virtualenvs".into(),
             path: ".cache/pypoetry/virtualenvs".into(),
-            results: vec![],
         },
         // uv on Linux/macOS - cache
         DiscoveryDefinition {
@@ -53,7 +48,6 @@ pub fn default_discovery_definitions() -> Vec<DiscoveryDefinition> {
             discovery: false,
             description: "uv cache".into(),
             path: ".cache/uv".into(),
-            results: vec![],
         },
     ]
 }

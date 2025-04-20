@@ -5,34 +5,31 @@ use tabled::settings::{Alignment, Color, Modify, Panel, Style, object::Cell};
 use tabled::{Table, Tabled};
 use tracing::instrument;
 
-use crate::discovery::{DetectedResult, DiscoveryDefinition};
+use crate::discovery::{DiscoveryResult, ResultType};
 
-#[instrument(level = "debug", skip(definitions))]
-pub fn print_results(definitions: Vec<DiscoveryDefinition>) {
+#[instrument(level = "debug", skip(discovery_results))]
+pub fn print_results(discovery_results: Vec<DiscoveryResult>) {
     let mut discovery_data = vec![];
     let mut static_data = vec![];
 
     let mut discovery_sum: u64 = 0;
     let mut static_sum: u64 = 0;
 
-    for def in definitions {
-        if def.results.is_empty() {
-            continue;
-        }
-        if def.discovery {
-            discovery_sum += def.results.iter().map(|r| r.size).sum::<u64>();
-            discovery_data.extend(def.results.iter().map(Record::from));
-        } else {
-            static_sum += def.results.iter().map(|r| r.size).sum::<u64>();
-            static_data.extend(
-                def.results
-                    .iter()
-                    .filter(|d| d.size != 0)
-                    .map(|d| StaticRecord {
-                        description: def.description.clone(),
-                        record: Record::from(d),
-                    }),
-            );
+    for result in discovery_results {
+        match result.result_type {
+            ResultType::Discovery => {
+                discovery_sum += result.size;
+                discovery_data.push(Record::from(result))
+            }
+            ResultType::Static(ref description) => {
+                static_sum += result.size;
+                if result.size != 0 {
+                    static_data.push(StaticRecord {
+                        description: description.clone(),
+                        record: Record::from(result),
+                    });
+                }
+            }
         }
     }
 
@@ -82,8 +79,8 @@ struct StaticRecord {
     record: Record,
 }
 
-impl From<&DetectedResult> for Record {
-    fn from(value: &DetectedResult) -> Self {
+impl From<DiscoveryResult> for Record {
+    fn from(value: DiscoveryResult) -> Self {
         Self {
             lang: value.lang.map(|l| l.to_string()),
             time: value.last_update.map(|t| {

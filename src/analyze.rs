@@ -26,6 +26,8 @@ pub enum AnalyzeError {
         #[from]
         inner: toml::de::Error,
     },
+    #[error("No results found. Do you use one of the supported languages?")]
+    NoResultsFound,
 }
 pub fn analyze(args: AnalyzeArgs, home_dir: &Path) -> Result<(), AnalyzeError> {
     if args.show_definitions {
@@ -43,11 +45,15 @@ pub fn analyze(args: AnalyzeArgs, home_dir: &Path) -> Result<(), AnalyzeError> {
     let cfg_data = fs::read_to_string(&cfg_path)?;
     let config: Config = toml::from_str(cfg_data.as_str())?;
 
-    let definitions = DiscoveryManager::with_default_loader(home_dir)
+    let discovery_results = DiscoveryManager::with_default_loader(home_dir)
         .add_from_config(&config)
         .collect();
 
-    print_results(definitions);
+    if discovery_results.is_empty() {
+        error!("No results found.");
+        return Err(AnalyzeError::NoResultsFound);
+    }
+    print_results(discovery_results);
 
     Ok(())
 }
