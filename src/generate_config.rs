@@ -23,9 +23,9 @@ pub enum GenerateConfigError {
 pub fn generate_config(home_dir: &Path) -> Result<(), GenerateConfigError> {
     let example_config = include_str!("../assets/example_config.toml");
 
-    let path = _obtain_path(home_dir).ok_or(GenerateConfigError::Interrupted)?;
+    let path = obtain_path(home_dir).ok_or(GenerateConfigError::Interrupted)?;
     println!("{}", path.display().dimmed());
-    _write_to_path(&path)?;
+    write_to_path(&path)?;
 
     debug!("Using configuration file: {}", path.display());
     fs::write(&path, example_config)?;
@@ -40,7 +40,7 @@ pub fn generate_config(home_dir: &Path) -> Result<(), GenerateConfigError> {
     Ok(())
 }
 
-fn _obtain_path(home_dir: &Path) -> Option<PathBuf> {
+fn obtain_path(home_dir: &Path) -> Option<PathBuf> {
     let candidates = get_config_file_candidates(home_dir);
 
     println!("Select preferred location for the configuration file:");
@@ -81,7 +81,7 @@ fn _obtain_path(home_dir: &Path) -> Option<PathBuf> {
     }
 }
 
-fn _write_to_path(path: &Path) -> Result<(), GenerateConfigError> {
+fn write_to_path(path: &Path) -> Result<(), GenerateConfigError> {
     debug!("Looking for a configuration file: {}", path.display());
     if !path.exists() {
         return Ok(());

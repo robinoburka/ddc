@@ -29,12 +29,12 @@ pub enum AnalyzeError {
 }
 pub fn analyze(args: AnalyzeArgs, home_dir: &Path) -> Result<(), AnalyzeError> {
     if args.show_definitions {
-        _show_default_definitions();
+        show_default_definitions();
         return Ok(());
     }
 
     let candidates = get_config_file_candidates(home_dir);
-    let Some(cfg_path) = _find_config_file(&candidates) else {
+    let Some(cfg_path) = find_config_file(&candidates) else {
         error!("Configuration file not found");
         Err(AnalyzeError::ConfigurationFileNotFound)?
     };
@@ -52,7 +52,7 @@ pub fn analyze(args: AnalyzeArgs, home_dir: &Path) -> Result<(), AnalyzeError> {
     Ok(())
 }
 
-fn _show_default_definitions() {
+fn show_default_definitions() {
     default_discovery_definitions()
         .iter()
         .for_each(|definition| {
@@ -66,7 +66,7 @@ fn _show_default_definitions() {
         })
 }
 
-pub fn _find_config_file(candidates: &[PathBuf]) -> Option<PathBuf> {
+fn find_config_file(candidates: &[PathBuf]) -> Option<PathBuf> {
     for candidate in candidates {
         debug!("Looking for a configuration file: {}", candidate.display());
         if candidate.exists() {
