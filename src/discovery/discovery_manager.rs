@@ -5,7 +5,7 @@ use std::thread;
 
 use crossbeam::channel;
 use crossbeam::channel::Sender;
-use tracing::{instrument, warn};
+use tracing::{debug_span, instrument, warn};
 
 use crate::config::Config;
 use crate::discovery::default_definitions::default_discovery_definitions;
@@ -69,7 +69,6 @@ impl<L: PathLoader> DiscoveryManager<L> {
                     lang,
                     discovery: pd.discovery,
                     description: pd.name.clone().unwrap_or("Projects".into()),
-                    // path: pd.path.clone(),
                     path: self.home.join(&pd.path),
                 }
             })
@@ -121,6 +120,7 @@ impl<L: PathLoader> DiscoveryManager<L> {
         let db = self.db.clone();
         let definitions = self.definitions.clone();
         thread::spawn(move || {
+            let _guard = debug_span!("static_thread").entered();
             for pd in definitions.iter() {
                 if !pd.discovery {
                     let size = db.iter_dir(&pd.path).filter_map(|fi| fi.size).sum();
@@ -153,6 +153,7 @@ fn spawn_discovery_thread(
     tx: Sender<DiscoveryResult>,
 ) {
     thread::spawn(move || {
+        let _guard = debug_span!("discovery_thread", lang = ?lang).entered();
         discovery_thread(db, definitions, detector, lang, tx);
     });
 }
