@@ -9,7 +9,7 @@ use tracing::{debug_span, instrument, warn};
 
 use crate::config::Config;
 use crate::discovery::default_definitions::default_discovery_definitions;
-use crate::discovery::detectors::{python_detector, rust_detector};
+use crate::discovery::detectors::{PythonVenvDetector, RustBuildDirDetector};
 use crate::discovery::discovery_definitions::ResultType;
 use crate::discovery::{DiscoveryDefinition, DiscoveryResult};
 use crate::files_db::FilesDB;
@@ -19,6 +19,11 @@ use crate::types::Language;
 pub trait PathLoader: Default {
     // There should be better encapsulation than this
     fn load_multiple_paths(&self, scan_paths: &[PathBuf]) -> FilesDB;
+}
+
+pub trait DynamicDetector: Default + Send + Sync + 'static {
+    const LANG: Language;
+    fn detect(&self, db: &FilesDB, path: &Path) -> bool;
 }
 
 pub struct DiscoveryManager<L: PathLoader> {
@@ -105,15 +110,13 @@ impl<L: PathLoader> DiscoveryManager<L> {
         spawn_discovery_thread(
             self.db.clone(),
             self.definitions.clone(),
-            rust_detector,
-            Language::Rust,
+            RustBuildDirDetector,
             tx.clone(),
         );
         spawn_discovery_thread(
             self.db.clone(),
             self.definitions.clone(),
-            python_detector,
-            Language::Python,
+            PythonVenvDetector,
             tx.clone(),
         );
 
@@ -145,16 +148,17 @@ impl<L: PathLoader> DiscoveryManager<L> {
     }
 }
 
-fn spawn_discovery_thread(
+fn spawn_discovery_thread<D>(
     db: Arc<FilesDB>,
     definitions: Arc<Vec<DiscoveryDefinition>>,
-    detector: fn(&FilesDB, &Path) -> bool,
-    lang: Language,
+    detector: D,
     tx: Sender<DiscoveryResult>,
-) {
+) where
+    D: DynamicDetector,
+{
     thread::spawn(move || {
-        let _guard = debug_span!("discovery_thread", lang = ?lang).entered();
-        discovery_thread(db, definitions, detector, lang, tx);
+        let _guard = debug_span!("discovery_thread", lang = ?D::LANG).entered();
+        discovery_thread(db, definitions, detector, tx);
     });
 }
 
@@ -162,16 +166,15 @@ fn discovery_thread<D>(
     db: Arc<FilesDB>,
     discovery_definitions: Arc<Vec<DiscoveryDefinition>>,
     detector: D,
-    lang: Language,
     tx: Sender<DiscoveryResult>,
 ) where
-    D: Fn(&FilesDB, &Path) -> bool,
+    D: DynamicDetector,
 {
     for definition in discovery_definitions.iter() {
         if definition.discovery {
             let detected_paths: Vec<&PathBuf> = db
                 .iter_directories(&definition.path)
-                .filter(|fi| detector(db.deref(), &fi.path))
+                .filter(|fi| detector.detect(db.deref(), &fi.path))
                 .map(|fi| &fi.path)
                 .collect();
             detected_paths.iter().for_each(|p| {
@@ -179,7 +182,7 @@ fn discovery_thread<D>(
                 let last_update = db.iter_dir(p).filter_map(|fi| fi.touched).max();
                 let r = DiscoveryResult {
                     result_type: ResultType::Discovery,
-                    lang: Some(lang),
+                    lang: Some(D::LANG),
                     path: (*p).clone(),
                     last_update,
                     size,
