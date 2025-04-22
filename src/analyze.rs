@@ -1,6 +1,6 @@
 use std::fs;
 use std::path::{Path, PathBuf};
-
+use std::sync::Arc;
 use owo_colors::OwoColorize;
 use tracing::{debug, error};
 
@@ -8,6 +8,8 @@ use crate::cli::{AnalyzeArgs, COMMAND_NAME};
 use crate::config::{Config, get_config_file_candidates};
 use crate::discovery::{DiscoveryManager, default_discovery_definitions};
 use crate::display::print_results;
+use crate::loader::FullyParallelLoader;
+use crate::progress_report::ProgressReport;
 
 #[derive(thiserror::Error, Debug)]
 pub enum AnalyzeError {
@@ -45,10 +47,15 @@ pub fn analyze(args: AnalyzeArgs, home_dir: &Path) -> Result<(), AnalyzeError> {
     let cfg_data = fs::read_to_string(&cfg_path)?;
     let config: Config = toml::from_str(cfg_data.as_str())?;
 
-    let discovery_results = DiscoveryManager::with_default_loader(home_dir)
+    let progress_report = Arc::new(ProgressReport::new());
+    
+    let loader = FullyParallelLoader::default().with_progress(progress_report.clone());
+    
+    // let discovery_results = DiscoveryManager::with_default_loader(home_dir)
+    let discovery_results = DiscoveryManager::new(loader, home_dir)
         .add_from_config(&config)
         .collect();
-
+    progress_report.done();
     if discovery_results.is_empty() {
         error!("No results found.");
         return Err(AnalyzeError::NoResultsFound);

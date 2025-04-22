@@ -37,7 +37,7 @@ impl DiscoveryManager<FullyParallelLoader> {
     pub fn with_default_loader(home: &Path) -> Self {
         Self {
             home: home.to_path_buf(),
-            loader: FullyParallelLoader,
+            loader: FullyParallelLoader::default(),
             db: Arc::new(FilesDB::new()),
             definitions: Arc::new(default_discovery_definitions(home)),
         }

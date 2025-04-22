@@ -1,8 +1,11 @@
+use std::ops::Deref;
 use std::path::PathBuf;
 use std::sync::mpsc::channel;
+use std::sync::{Arc, Mutex};
 use std::thread;
 
 use crossbeam::channel;
+use indicatif::style::ProgressTracker;
 use jwalk::rayon::prelude::*;
 use jwalk::{Parallelism, WalkDir};
 use tracing::{debug, debug_span};
@@ -10,7 +13,7 @@ use tracing::{debug, debug_span};
 use crate::discovery::PathLoader;
 use crate::file_info::FileInfo;
 use crate::files_db::FilesDB;
-
+use crate::progress_report::ProgressReport;
 // The value was carefully tested and smaller numbers work better than higher.
 // const THREADS: usize = 4;
 
@@ -68,10 +71,17 @@ impl PathLoader for BaseLoader {
 }
 
 #[derive(Default)]
-pub struct FullyParallelLoader;
+pub struct FullyParallelLoader{
+    progress_report: Option<Arc<ProgressReport>>,
+}
 
 impl FullyParallelLoader {
     const NUM_THREADS: usize = 4;
+
+    pub fn with_progress(mut self, progress_report: Arc<ProgressReport>) -> Self {
+        self.progress_report = Some(progress_report);
+        self
+    }
 }
 
 impl PathLoader for FullyParallelLoader {
@@ -79,15 +89,26 @@ impl PathLoader for FullyParallelLoader {
         let (paths_sender, paths_receiver) = channel::unbounded();
         let (infos_sender, infos_receiver) = channel::unbounded();
 
+        if let Some(p) = &self.progress_report {
+            p.start_scan(scan_paths.len());
+        }
+        
         scan_paths.iter().for_each(|path| {
             let my_paths_sender = paths_sender.clone();
             let path = path.clone();
+            let progress = match &self.progress_report {
+                None => None,
+                Some(p) => Some(Arc::clone(p)),
+            };
             thread::spawn(move || {
                 let _guard = debug_span!("walk_dir", path = ?path).entered();
                 let paths = walk_dir_paths(&path);
                 paths.into_iter().for_each(|path| {
                     my_paths_sender.send(path).unwrap();
-                })
+                });
+                if let Some(p) = progress {
+                    p.tick();
+                }
             });
         });
         drop(paths_sender);
