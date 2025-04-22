@@ -33,14 +33,18 @@ pub fn print_results(discovery_results: Vec<DiscoveryResult>) {
         }
     }
 
-    let table_static = Table::new(static_data)
-        .with(Panel::header("Tooling"))
-        .with(Panel::footer(format_size(static_sum, DECIMAL)))
-        .with(Modify::new(Rows::last()).with(Color::BOLD))
-        .with(Modify::new(Rows::last()).with(Alignment::right()))
-        .with(Style::modern_rounded())
-        .with(Modify::new(Cell::new(0, 0)).with(Color::BOLD))
-        .to_string();
+    let mut table_static_build = Table::new(&static_data);
+    table_static_build.with(Panel::header("Tooling"));
+    table_static_build.with(Panel::footer(format_size(static_sum, DECIMAL)));
+    table_static_build.with(Modify::new(Rows::last()).with(Color::BOLD));
+    table_static_build.with(Modify::new(Rows::last()).with(Alignment::right()));
+    table_static_build.with(Modify::new(Cell::new(0, 0)).with(Color::BOLD));
+    table_static_build.with(Style::modern_rounded());
+    static_data.iter().enumerate().for_each(|(i, d)| {
+        table_static_build
+            .with(Modify::new(Cell::new(i + 2, 4)).with(size_color_coded(d.record.size)));
+    });
+    let table_static = table_static_build.to_string();
     println!("{table_static}");
 
     let mut table_discovery_build = Table::new(&discovery_data);
