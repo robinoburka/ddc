@@ -1,4 +1,5 @@
 #![feature(btree_cursors)]
+#![feature(duration_constructors)]
 
 use anyhow::Context;
 use clap::Parser;

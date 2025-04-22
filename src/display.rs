@@ -1,3 +1,5 @@
+use std::time::{Duration, SystemTime};
+
 use chrono::{DateTime, Local};
 use humansize::{DECIMAL, format_size};
 use tabled::settings::object::Rows;
@@ -33,6 +35,8 @@ pub fn print_results(discovery_results: Vec<DiscoveryResult>) {
         }
     }
 
+    let now = SystemTime::now();
+
     let mut table_static_build = Table::new(&static_data);
     table_static_build.with(Panel::header("Tooling"));
     table_static_build.with(Panel::footer(format_size(static_sum, DECIMAL)));
@@ -41,6 +45,8 @@ pub fn print_results(discovery_results: Vec<DiscoveryResult>) {
     table_static_build.with(Modify::new(Cell::new(0, 0)).with(Color::BOLD));
     table_static_build.with(Style::modern_rounded());
     static_data.iter().enumerate().for_each(|(i, d)| {
+        table_static_build
+            .with(Modify::new(Cell::new(i + 2, 3)).with(time_color_coded(&now, &d.record.time)));
         table_static_build
             .with(Modify::new(Cell::new(i + 2, 4)).with(size_color_coded(d.record.size)));
     });
@@ -55,6 +61,8 @@ pub fn print_results(discovery_results: Vec<DiscoveryResult>) {
     table_discovery_build.with(Modify::new(Cell::new(0, 0)).with(Color::BOLD));
     table_discovery_build.with(Style::modern_rounded());
     discovery_data.iter().enumerate().for_each(|(i, d)| {
+        table_discovery_build
+            .with(Modify::new(Cell::new(i + 2, 2)).with(time_color_coded(&now, &d.time)));
         table_discovery_build.with(Modify::new(Cell::new(i + 2, 3)).with(size_color_coded(d.size)));
     });
     let table_discovery = table_discovery_build.to_string();
@@ -68,7 +76,9 @@ struct Record {
     #[tabled(rename = "Path")]
     path: String,
     #[tabled(rename = "Last change", display("tabled::derive::display::option", ""))]
-    time: Option<String>,
+    human_time: Option<String>,
+    #[tabled(skip)]
+    time: Option<SystemTime>,
     #[tabled(rename = "Size")]
     human_size: String,
     #[tabled(skip)]
@@ -87,7 +97,8 @@ impl From<DiscoveryResult> for Record {
     fn from(value: DiscoveryResult) -> Self {
         Self {
             lang: value.lang.map(|l| l.to_string()),
-            time: value.last_update.map(|t| {
+            time: value.last_update,
+            human_time: value.last_update.map(|t| {
                 DateTime::<Local>::from(t)
                     .format("%Y-%m-%d %H:%M:%S")
                     .to_string()
@@ -106,5 +117,23 @@ fn size_color_coded(size: u64) -> Color {
         Color::FG_YELLOW
     } else {
         Color::FG_RED
+    }
+}
+
+fn time_color_coded(now: &SystemTime, time: &Option<SystemTime>) -> Color {
+    match time {
+        None => Color::FG_WHITE, // Wouldn't be displayed anyway
+        Some(system_time) => match now.duration_since(*system_time) {
+            Err(_) => Color::FG_WHITE, // Future time; shouldn't happen
+            Ok(duration) => {
+                if duration < Duration::from_days(14) {
+                    Color::FG_GREEN
+                } else if duration < Duration::from_days(60) {
+                    Color::FG_YELLOW
+                } else {
+                    Color::FG_RED
+                }
+            }
+        },
     }
 }
