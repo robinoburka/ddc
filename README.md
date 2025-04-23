@@ -50,6 +50,27 @@ ddc generate-config
 
 Then, follow the instructions in the file to set it up.
 
+### How to Read the Output
+The output includes two key columns to help you evaluate the projects on your disk:
+- **Last Change**: Shows the most recent modification within the entire directory tree. This helps you identify stale projects.
+- **Size**: Displays the total size of the directory and all its subdirectories. This helps you identify large projects that may be consuming unnecessary space.
+
+Both columns use color coding - green, yellow, and red - to convey the following meanings:
+- **Last Change**
+  - 🟢 Green: The project was updated very recently.
+  - 🟡 Yellow: The project was updated in the recent past.
+  - 🔴 Red: The project hasn’t been updated in a long time.
+- **Size**
+  - 🟢 Green: The project takes up little space.
+  - 🟡 Yellow: The project occupies a moderate amount of space.
+  - 🔴 Red: The project takes up a large amount of space.
+
+This color coding makes it easy to quickly assess your projects and decide which ones to keep or clean up. For example:
+- 🟢 Green – 🔴 Red: The project is actively developed and takes up a lot of space. You likely want to keep it.
+- 🔴 Red – 🟢 Green: The project is stale but doesn’t use much space. It’s probably fine to keep.
+- 🔴 Red – 🔴 Red: The project is both stale and large. Consider cleaning it up.
+- Other combinations should be evaluated on a case-by-case basis.
+
 ## Configuration
 
 `ddc` identifies well-known paths used by popular tools. However, it cannot automatically determine where you store your projects. That’s why a configuration file is necessary.
