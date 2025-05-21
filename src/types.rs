@@ -10,6 +10,7 @@ pub enum TypesError {
 pub enum Language {
     Python,
     Rust,
+    JS,
 }
 
 impl Display for Language {
@@ -17,6 +18,7 @@ impl Display for Language {
         match self {
             Language::Python => write!(f, "🐍"),
             Language::Rust => write!(f, "🦀"),
+            Language::JS => write!(f, "🟨"),
         }
     }
 }
@@ -29,6 +31,7 @@ impl TryFrom<&str> for Language {
         match lower.as_str() {
             "python" => Ok(Language::Python),
             "rust" => Ok(Language::Rust),
+            "javascript" => Ok(Language::JS),
             _ => Err(TypesError::UnknownLanguage(value.to_string())),
         }
     }

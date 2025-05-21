@@ -23,4 +23,4 @@ name = "venvs custom location"  # Name is optional, but recommended. It's displa
 path = ".virtualenvs/"  # All paths are relative to your home directory.
 discovery = false  # Turns off automated discovery. It enables you to get just the summary of the path.
 language = "python"  # Language is optional. It just provides a nice visual representation in an output table.
-# Currently, 'python' and 'rust' languages are supported.
+# Currently, 'python', 'rust', and 'javascript' languages are supported.

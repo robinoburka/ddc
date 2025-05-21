@@ -9,7 +9,7 @@ use tracing::{debug_span, instrument, warn};
 
 use crate::config::Config;
 use crate::discovery::default_definitions::default_discovery_definitions;
-use crate::discovery::detectors::{PythonVenvDetector, RustBuildDirDetector};
+use crate::discovery::detectors::{JsNpmDetector, PythonVenvDetector, RustBuildDirDetector};
 use crate::discovery::discovery_definitions::ResultType;
 use crate::discovery::{DiscoveryDefinition, DiscoveryResult};
 use crate::files_db::FilesDB;
@@ -117,6 +117,12 @@ impl<L: PathLoader> DiscoveryManager<L> {
             self.db.clone(),
             self.definitions.clone(),
             PythonVenvDetector,
+            tx.clone(),
+        );
+        spawn_discovery_thread(
+            self.db.clone(),
+            self.definitions.clone(),
+            JsNpmDetector,
             tx.clone(),
         );
 

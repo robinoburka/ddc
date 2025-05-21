@@ -51,6 +51,15 @@ pub fn default_discovery_definitions(home: &Path) -> Vec<DiscoveryDefinition> {
             description: "uv cache".into(),
             path: ".cache/uv".into(),
         },
+        // JavaScript
+        ////////////////////////////////////////
+        // npm - cache
+        DiscoveryDefinition {
+            lang: Some(Language::JS),
+            discovery: false,
+            description: "NPM cache".into(),
+            path: ".npm".into(),
+        },
     ];
 
     for def in definitions.iter_mut() {

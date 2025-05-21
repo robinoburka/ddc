@@ -26,3 +26,22 @@ impl DynamicDetector for RustBuildDirDetector {
             && (db.is_dir(&path.join("debug/build")) || db.is_dir(&path.join("release/build")))
     }
 }
+
+#[derive(Default)]
+pub struct JsNpmDetector;
+
+impl DynamicDetector for JsNpmDetector {
+    const LANG: Language = Language::JS;
+
+    fn detect(&self, db: &FilesDB, path: &Path) -> bool {
+        if path.ends_with("node_modules") && db.is_dir(&path.join(".bin")) {
+            let cnt = path
+                .components()
+                .filter(|c| c.as_os_str() == "node_modules")
+                .count();
+            cnt == 1
+        } else {
+            false
+        }
+    }
+}
