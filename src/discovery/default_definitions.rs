@@ -51,6 +51,13 @@ pub fn default_discovery_definitions(home: &Path) -> Vec<DiscoveryDefinition> {
             description: "uv cache".into(),
             path: ".cache/uv".into(),
         },
+        // uv alternative Python installation directory
+        DiscoveryDefinition {
+            lang: Some(Language::Python),
+            discovery: false,
+            description: "uv Python downloads".into(),
+            path: ".local/share/uv/python".into(),
+        },
         // JavaScript
         ////////////////////////////////////////
         // npm - cache
