@@ -14,6 +14,7 @@ use crate::files_db::FilesDB;
 // The value was carefully tested and smaller numbers work better than higher.
 // const THREADS: usize = 4;
 
+#[allow(dead_code)]
 #[derive(thiserror::Error, Debug)]
 pub enum LoaderError {
     #[error("Unable to access metadata: {inner}")]
@@ -42,6 +43,7 @@ fn walk_dir_file_infos(directory: &PathBuf) -> Vec<FileInfo> {
         .collect::<Vec<_>>()
 }
 
+#[allow(dead_code)]
 #[derive(Default)]
 pub struct BaseLoader;
 
