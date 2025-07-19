@@ -119,3 +119,40 @@ impl PathLoader for FullyParallelLoader {
         db
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+
+    use tempfile::tempdir;
+
+    use super::*;
+
+    #[test]
+    fn test_base_loader() {
+        perform_test(BaseLoader::default());
+    }
+
+    #[test]
+    fn test_fully_parallel_loader() {
+        perform_test(FullyParallelLoader::default());
+    }
+
+    fn perform_test<L: PathLoader>(loader: L) {
+        let tmp = tempdir().unwrap();
+        let root_path = tmp.path();
+        let dir_path = root_path.join("foo/bar");
+        let file_path = dir_path.join("baz.txt");
+        fs::create_dir_all(&dir_path).unwrap();
+        fs::write(&file_path, "Hello, World!").unwrap();
+
+        let db = loader.load_multiple_paths(&[root_path.to_path_buf()]);
+
+        assert!(db.exists(&root_path.join("foo")));
+        assert!(db.is_dir(&root_path.join("foo")));
+        assert!(db.exists(&root_path.join("foo/bar")));
+        assert!(db.is_dir(&root_path.join("foo/bar")));
+        assert!(db.exists(&root_path.join("foo/bar/baz.txt")));
+        assert!(!db.is_dir(&root_path.join("foo/bar/baz.txt")));
+    }
+}

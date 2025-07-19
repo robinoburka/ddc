@@ -12,7 +12,7 @@ pub struct DiscoveryResult {
     pub last_update: Option<SystemTime>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum ResultType {
     Discovery,
     Static(String),

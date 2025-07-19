@@ -55,3 +55,16 @@ pub fn setup_logging(level: LoggingLevel) -> Result<()> {
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_log_level() {
+        assert_eq!(LoggingLevel::from(0), LoggingLevel::Silent);
+        assert_eq!(LoggingLevel::from(1), LoggingLevel::Verbose);
+        assert_eq!(LoggingLevel::from(2), LoggingLevel::Traces);
+        assert_eq!(LoggingLevel::from(3), LoggingLevel::Traces);
+    }
+}

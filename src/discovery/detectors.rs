@@ -45,3 +45,146 @@ impl DynamicDetector for JsNpmDetector {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+
+    use super::*;
+    use crate::file_info::FileInfo;
+
+    fn add_record(db: &mut FilesDB, path: &str) {
+        db.add(
+            PathBuf::from(path),
+            FileInfo {
+                path: PathBuf::from(path),
+                is_dir: true,
+                size: None,
+                touched: None,
+            },
+        );
+    }
+
+    fn get_virtual_layout() -> FilesDB {
+        let mut db = FilesDB::new();
+        add_record(&mut db, "projects");
+        add_record(&mut db, "projects/python");
+        add_record(&mut db, "projects/python/venv");
+        add_record(&mut db, "projects/python/venv/bin");
+        add_record(&mut db, "projects/python/venv/bin/python");
+        add_record(&mut db, "projects/python/wrong_venv");
+        add_record(&mut db, "projects/python/wrong_venv/bin");
+        add_record(&mut db, "projects/rust");
+        add_record(&mut db, "projects/rust/target");
+        add_record(&mut db, "projects/rust/target/debug");
+        add_record(&mut db, "projects/rust/target/debug/build");
+        add_record(&mut db, "projects/rust/target/release");
+        add_record(&mut db, "projects/rust/target/release/build");
+        add_record(&mut db, "projects/rust_only_debug/");
+        add_record(&mut db, "projects/rust_only_debug/target");
+        add_record(&mut db, "projects/rust_only_debug/target/debug");
+        add_record(&mut db, "projects/rust_only_debug/target/debug/build");
+        add_record(&mut db, "projects/rust_only_release/");
+        add_record(&mut db, "projects/rust_only_release/target");
+        add_record(&mut db, "projects/rust_only_release/target/release");
+        add_record(&mut db, "projects/rust_only_release/target/release/build");
+        add_record(&mut db, "projects/node");
+        add_record(&mut db, "projects/node/node_modules");
+        add_record(&mut db, "projects/node/node_modules/.bin");
+        add_record(&mut db, "projects/node/node_modules/.bin/foo");
+        add_record(&mut db, "projects/node/node_modules/.bin/foo/node_modules");
+        add_record(
+            &mut db,
+            "projects/node/node_modules/.bin/foo/node_modules/.bin",
+        );
+
+        db
+    }
+    #[test]
+    fn test_python_detector() {
+        let db = get_virtual_layout();
+        let detector = PythonVenvDetector::default();
+
+        assert_eq!(
+            detector.detect(&db, &PathBuf::from("projects/python/venv")),
+            true
+        );
+        assert_eq!(
+            detector.detect(&db, &PathBuf::from("projects/python/wrong_venv")),
+            false
+        );
+    }
+
+    #[test]
+    fn test_rust_detector_debug() {
+        let db = get_virtual_layout();
+        let detector = RustBuildDirDetector::default();
+
+        assert_eq!(
+            detector.detect(&db, &PathBuf::from("projects/rust_only_debug/target")),
+            true
+        );
+        assert_eq!(
+            detector.detect(&db, &PathBuf::from("projects/rust/target")),
+            true
+        );
+    }
+
+    #[test]
+    fn test_rust_detector_release() {
+        let db = get_virtual_layout();
+        let detector = RustBuildDirDetector::default();
+
+        assert_eq!(
+            detector.detect(&db, &PathBuf::from("projects/rust_only_release/target")),
+            true
+        );
+        assert_eq!(
+            detector.detect(&db, &PathBuf::from("projects/rust/target")),
+            true
+        );
+    }
+
+    #[test]
+    fn test_rust_detector_both() {
+        let db = get_virtual_layout();
+        let detector = RustBuildDirDetector::default();
+
+        assert_eq!(
+            detector.detect(&db, &PathBuf::from("projects/rust/target")),
+            true
+        );
+    }
+
+    #[test]
+    fn test_node_detector() {
+        let db = get_virtual_layout();
+        let detector = JsNpmDetector::default();
+
+        assert_eq!(
+            detector.detect(&db, &PathBuf::from("projects/node/node_modules")),
+            true
+        );
+        assert_eq!(
+            detector.detect(
+                &db,
+                &PathBuf::from("projects/node/node_modules/.bin/node_modules")
+            ),
+            false
+        );
+    }
+
+    #[test]
+    fn test_node_detector_on_nested() {
+        let db = get_virtual_layout();
+        let detector = JsNpmDetector::default();
+
+        assert_eq!(
+            detector.detect(
+                &db,
+                &PathBuf::from("projects/node/node_modules/.bin/node_modules")
+            ),
+            false
+        );
+    }
+}

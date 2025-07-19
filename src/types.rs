@@ -44,3 +44,32 @@ impl TryFrom<&String> for Language {
         Self::try_from(value.as_str())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_language_try_from_python() {
+        assert_eq!(Language::try_from("python").unwrap(), Language::Python);
+        assert_eq!(Language::try_from("Python").unwrap(), Language::Python);
+    }
+
+    #[test]
+    fn test_language_try_from_rust() {
+        assert_eq!(Language::try_from("rust").unwrap(), Language::Rust);
+        assert_eq!(Language::try_from("Rust").unwrap(), Language::Rust);
+    }
+
+    #[test]
+    fn test_language_try_from_js() {
+        assert_eq!(Language::try_from("javascript").unwrap(), Language::JS);
+        assert_eq!(Language::try_from("JavaScript").unwrap(), Language::JS);
+        assert!(Language::try_from("foo").is_err());
+    }
+
+    #[test]
+    fn test_language_try_from_err() {
+        assert!(Language::try_from("foo").is_err());
+    }
+}

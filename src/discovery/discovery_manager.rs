@@ -198,3 +198,113 @@ fn discovery_thread<D>(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+    use std::string::String;
+
+    use tempfile::tempdir;
+
+    use super::*;
+    use crate::config::PathDefinition;
+    use crate::discovery::discovery_definitions::ResultType;
+
+    #[test]
+    fn test_discovery_manager() {
+        let tmp = tempdir().unwrap();
+        let root_path = tmp.path();
+        fs::create_dir_all(root_path.join("projects/rust/target/release/build")).unwrap();
+        fs::write(
+            root_path.join("projects/rust/target/release/build/file"),
+            "Executable mock",
+        )
+        .unwrap();
+        fs::create_dir_all(root_path.join("projects/python/venv/bin")).unwrap();
+        fs::write(
+            root_path.join("projects/python/venv/bin/python"),
+            "Python executable mock",
+        )
+        .unwrap();
+        fs::create_dir_all(root_path.join(".cache/uv")).unwrap();
+        fs::write(
+            root_path.join(".cache/uv/CACHEDIR.TAG"),
+            "Signature: 8a477f597d28d172789f06886806bc55",
+        )
+        .unwrap();
+        fs::create_dir_all(root_path.join("to_sum")).unwrap();
+        fs::write(root_path.join("to_sum/foo.txt"), "Hello, World!").unwrap();
+
+        let config = Config {
+            paths: vec![
+                PathDefinition {
+                    path: root_path.join("projects").to_path_buf(),
+                    discovery: true,
+                    name: Some(String::from("Projects")),
+                    language: None,
+                },
+                PathDefinition {
+                    path: root_path.join("to_sum").to_path_buf(),
+                    discovery: false,
+                    name: Some(String::from("Just to check")),
+                    language: Some(String::from("rust")),
+                },
+            ],
+        };
+
+        let discovery_results = DiscoveryManager::with_default_loader(root_path)
+            .add_from_config(&config)
+            .collect();
+
+        let mut found_paths: Vec<_> = discovery_results.iter().filter(|r| r.size > 0).collect();
+        found_paths.sort_by_key(|r| r.path.clone());
+
+        assert_eq!(found_paths.len(), 4);
+
+        // Coming from Default definitions
+        assert_eq!(
+            found_paths[0].result_type,
+            ResultType::Static(String::from("uv cache"))
+        );
+        assert_eq!(found_paths[0].path, root_path.join(".cache/uv"));
+        assert_eq!(found_paths[0].lang, Some(Language::Python));
+        let dirs_size = fs::metadata(&root_path.join(".cache/uv")).unwrap().len();
+        assert_eq!(found_paths[0].size, dirs_size + 43);
+
+        // Coming from config - discovery
+        assert_eq!(found_paths[1].result_type, ResultType::Discovery);
+        assert_eq!(found_paths[1].path, root_path.join("projects/python/venv"));
+        assert_eq!(found_paths[1].lang, Some(Language::Python));
+        let dirs_size: u64 = vec![
+            &root_path.join("projects/python"),
+            &root_path.join("projects/python/venv"),
+        ]
+        .iter()
+        .map(|p| fs::metadata(p).unwrap().len())
+        .sum();
+        assert_eq!(found_paths[1].size, dirs_size + 22);
+
+        assert_eq!(found_paths[2].result_type, ResultType::Discovery);
+        assert_eq!(found_paths[2].path, root_path.join("projects/rust/target"));
+        assert_eq!(found_paths[2].lang, Some(Language::Rust));
+        let dirs_size: u64 = vec![
+            &root_path.join("projects/rust"),
+            &root_path.join("projects/rust/target"),
+            &root_path.join("projects/rust/target/release"),
+        ]
+        .iter()
+        .map(|p| fs::metadata(p).unwrap().len())
+        .sum();
+        assert_eq!(found_paths[2].size, dirs_size + 15);
+
+        // Coming from config - non-discoverable
+        assert_eq!(
+            found_paths[3].result_type,
+            ResultType::Static(String::from("Just to check"))
+        );
+        assert_eq!(found_paths[3].path, root_path.join("to_sum"));
+        assert_eq!(found_paths[3].lang, Some(Language::Rust));
+        let dirs_size = fs::metadata(&root_path.join("to_sum")).unwrap().len();
+        assert_eq!(found_paths[3].size, dirs_size + 13);
+    }
+}

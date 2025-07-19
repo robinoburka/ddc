@@ -75,3 +75,30 @@ pub fn default_discovery_definitions(home: &Path) -> Vec<DiscoveryDefinition> {
 
     definitions
 }
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+
+    use super::*;
+
+    #[test]
+    fn test_get_default_definitions_based_on_home_dir() {
+        let home_path = PathBuf::from("/home/foo");
+        let definitions = default_discovery_definitions(&home_path);
+
+        for def in definitions {
+            assert_eq!(def.path.starts_with("/home/foo"), true);
+        }
+    }
+
+    #[test]
+    fn test_all_definitions_has_language() {
+        let home_path = PathBuf::from("/home/foo");
+        let definitions = default_discovery_definitions(&home_path);
+
+        for def in definitions {
+            assert_ne!(def.lang, None);
+        }
+    }
+}

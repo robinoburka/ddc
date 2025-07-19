@@ -1,3 +1,4 @@
+use std::io::Write;
 use std::time::{Duration, SystemTime};
 
 use chrono::{DateTime, Local};
@@ -9,8 +10,8 @@ use tracing::instrument;
 
 use crate::discovery::{DiscoveryResult, ResultType};
 
-#[instrument(level = "debug", skip(discovery_results))]
-pub fn print_results(discovery_results: Vec<DiscoveryResult>) {
+#[instrument(level = "debug", skip(out, discovery_results))]
+pub fn print_results<W: Write>(out: &mut W, discovery_results: Vec<DiscoveryResult>) {
     let mut discovery_data = vec![];
     let mut static_data = vec![];
 
@@ -51,7 +52,7 @@ pub fn print_results(discovery_results: Vec<DiscoveryResult>) {
             .with(Modify::new(Cell::new(i + 2, 4)).with(size_color_coded(d.record.size)));
     });
     let table_static = table_static_build.to_string();
-    println!("{table_static}");
+    writeln!(out, "{table_static}").expect("Cannot write to stdout");
 
     let mut table_discovery_build = Table::new(&discovery_data);
     table_discovery_build.with(Panel::header("Projects"));
@@ -66,7 +67,7 @@ pub fn print_results(discovery_results: Vec<DiscoveryResult>) {
         table_discovery_build.with(Modify::new(Cell::new(i + 2, 3)).with(size_color_coded(d.size)));
     });
     let table_discovery = table_discovery_build.to_string();
-    println!("{table_discovery}");
+    writeln!(out, "{table_discovery}").expect("Cannot write to stdout");
 }
 
 #[derive(Tabled)]
@@ -135,5 +136,55 @@ fn time_color_coded(now: &SystemTime, time: &Option<SystemTime>) -> Color {
                 }
             }
         },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_size_color_coding() {
+        assert_eq!(size_color_coded(1000), Color::FG_GREEN);
+        assert_eq!(size_color_coded(1000 * 1000), Color::FG_GREEN);
+        assert_eq!(size_color_coded(50 * 1000 * 1000), Color::FG_GREEN);
+        assert_eq!(size_color_coded(80 * 1000 * 1000), Color::FG_GREEN);
+        assert_eq!(size_color_coded(90 * 1000 * 1000), Color::FG_YELLOW);
+        assert_eq!(size_color_coded(100 * 1000 * 1000), Color::FG_YELLOW);
+        assert_eq!(size_color_coded(500 * 1000 * 1000), Color::FG_YELLOW);
+        assert_eq!(size_color_coded(800 * 1000 * 1000), Color::FG_YELLOW);
+        assert_eq!(size_color_coded(900 * 1000 * 1000), Color::FG_RED);
+        assert_eq!(size_color_coded(1000 * 1000 * 1000), Color::FG_RED);
+    }
+
+    #[test]
+    fn test_time_color_coding() {
+        let now = SystemTime::now();
+
+        assert_eq!(time_color_coded(&now, &None), Color::FG_WHITE);
+        assert_eq!(
+            time_color_coded(&now, &Some(now - Duration::from_days(1))),
+            Color::FG_GREEN
+        );
+        assert_eq!(
+            time_color_coded(&now, &Some(now - Duration::from_days(10))),
+            Color::FG_GREEN
+        );
+        assert_eq!(
+            time_color_coded(&now, &Some(now - Duration::from_days(20))),
+            Color::FG_YELLOW
+        );
+        assert_eq!(
+            time_color_coded(&now, &Some(now - Duration::from_days(50))),
+            Color::FG_YELLOW
+        );
+        assert_eq!(
+            time_color_coded(&now, &Some(now - Duration::from_days(60))),
+            Color::FG_RED
+        );
+        assert_eq!(
+            time_color_coded(&now, &Some(now - Duration::from_days(70))),
+            Color::FG_RED
+        );
     }
 }
