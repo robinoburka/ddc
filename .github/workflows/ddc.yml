@@ -1,34 +1,45 @@
-name: DDC
+name: DDC CI (nightly)
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["*"]
   pull_request:
-    branches: [ "main" ]
+    branches: ["*"]
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
   build:
-
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Rust
-        uses: dtolnay/rust-toolchain@master
+      - name: Set up Rust toolchain
+        uses: actions-rs/toolchain@v1
         with:
           toolchain: nightly
           components: clippy, rustfmt
 
-      - name: Format check
-        run: cargo fmt --check
+      - name: Cache Cargo
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Lint with Clippy
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Run Clippy
         run: cargo clippy -- -D warnings
 
       - name: Run tests
-        run: cargo test --all-features
+        run: cargo test --all
+
+      - name: Build
+        run: cargo build --release
