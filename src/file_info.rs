@@ -1,5 +1,5 @@
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -10,18 +10,20 @@ pub struct FileInfo {
     pub touched: Option<SystemTime>,
 }
 
-impl TryFrom<&PathBuf> for FileInfo {
-    type Error = std::io::Error;
-
-    fn try_from(p: &PathBuf) -> Result<Self, Self::Error> {
-        let metadata = fs::metadata(p).or(fs::symlink_metadata(p))?;
-        Ok(Self {
-            path: p.clone(),
+impl FileInfo {
+    pub fn new(path: &Path, metadata: &fs::Metadata) -> Self {
+        Self {
+            path: path.to_path_buf(),
             is_dir: metadata.is_dir(),
             size: Some(metadata.len()),
             touched: metadata.modified().ok(),
-        })
+        }
     }
+}
+
+pub fn get_file_info(path: &Path) -> Result<FileInfo, std::io::Error> {
+    let metadata = fs::metadata(path).or(fs::symlink_metadata(path))?;
+    Ok(FileInfo::new(path, &metadata))
 }
 
 #[cfg(test)]
@@ -37,13 +39,13 @@ mod tests {
         fs::write(&file_path, "Hello, World!").unwrap();
         let dir_size = fs::metadata(&dir_path).unwrap().len();
 
-        let file_info = FileInfo::try_from(&file_path).unwrap();
+        let file_info = get_file_info(&file_path).unwrap();
         assert_eq!(file_info.path, file_path);
         assert!(!file_info.is_dir);
         assert_eq!(file_info.size, Some(13));
         assert!(file_info.touched.is_some());
 
-        let file_info = FileInfo::try_from(&dir_path).unwrap();
+        let file_info = get_file_info(&dir_path).unwrap();
         assert_eq!(file_info.path, dir_path);
         assert!(file_info.is_dir);
         assert_eq!(file_info.size, Some(dir_size));

@@ -8,7 +8,7 @@ use jwalk::{Parallelism, WalkDir};
 use tracing::{debug, debug_span};
 
 use crate::discovery::PathLoader;
-use crate::file_info::FileInfo;
+use crate::file_info::{FileInfo, get_file_info};
 use crate::files_db::FilesDB;
 
 // The value was carefully tested and smaller numbers work better than higher.
@@ -39,7 +39,7 @@ fn walk_dir_file_infos(directory: &PathBuf) -> Vec<FileInfo> {
         .skip_hidden(false)
         .into_iter()
         .filter_map(|res| res.map(|de| de.path()).ok())
-        .filter_map(|path| FileInfo::try_from(&path).ok())
+        .filter_map(|path| get_file_info(&path).ok())
         .collect::<Vec<_>>()
 }
 
@@ -99,7 +99,7 @@ impl PathLoader for FullyParallelLoader {
             let my_infos_sender = infos_sender.clone();
             thread::spawn(move || {
                 my_paths_receiver.iter().for_each(|path| {
-                    if let Ok(info) = FileInfo::try_from(&path) {
+                    if let Ok(info) = get_file_info(&path) {
                         my_infos_sender.send((path, info)).unwrap();
                     } else {
                         debug!("Failed to load info for {}", path.display());
