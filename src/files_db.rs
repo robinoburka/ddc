@@ -4,10 +4,10 @@ use std::collections::btree_map::Cursor;
 use std::ops::Bound;
 use std::path::PathBuf;
 
-use crate::file_info::FileInfo;
+use crate::file_info::{FileInfo, FileMeta};
 
 pub struct FilesDB {
-    files: BTreeMap<PathBuf, FileInfo>,
+    files: BTreeMap<PathBuf, FileMeta>,
 }
 
 impl FilesDB {
@@ -17,8 +17,8 @@ impl FilesDB {
         }
     }
 
-    pub fn add(&mut self, path: PathBuf, info: FileInfo) {
-        self.files.insert(path, info);
+    pub fn add(&mut self, path: PathBuf, meta: FileMeta) {
+        self.files.insert(path, meta);
     }
 
     /// Iterate over complete content of `lookup_path`
@@ -75,35 +75,45 @@ impl FilesDB {
 }
 
 pub struct DirectoryIter<'a, 'b> {
-    cursor: Cursor<'a, PathBuf, FileInfo>,
+    cursor: Cursor<'a, PathBuf, FileMeta>,
     lookup_path: &'b PathBuf,
 }
 
 impl<'a> Iterator for DirectoryIter<'a, '_> {
-    type Item = &'a FileInfo;
+    type Item = FileInfo<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let (path, info) = self.cursor.next()?;
+        let (path, meta) = self.cursor.next()?;
         if !path.starts_with(self.lookup_path) {
             return None;
         }
 
-        Some(info)
+        Some(FileInfo {
+            path,
+            is_dir: meta.is_dir,
+            size: meta.size,
+            touched: meta.touched,
+        })
     }
 }
 
 pub struct LevelIter<'a, 'b> {
-    cursor: Cursor<'a, PathBuf, FileInfo>,
+    cursor: Cursor<'a, PathBuf, FileMeta>,
     lookup_path: &'b PathBuf,
 }
 
 impl<'a> Iterator for LevelIter<'a, '_> {
-    type Item = &'a FileInfo;
+    type Item = FileInfo<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        while let Some((path, info)) = self.cursor.next() {
+        while let Some((path, meta)) = self.cursor.next() {
             if path.parent()? == self.lookup_path {
-                return Some(info);
+                return Some(FileInfo {
+                    path,
+                    is_dir: meta.is_dir,
+                    size: meta.size,
+                    touched: meta.touched,
+                });
             }
         }
 
@@ -112,20 +122,25 @@ impl<'a> Iterator for LevelIter<'a, '_> {
 }
 
 pub struct AllDirsIter<'a, 'b> {
-    cursor: Cursor<'a, PathBuf, FileInfo>,
+    cursor: Cursor<'a, PathBuf, FileMeta>,
     lookup_path: &'b PathBuf,
 }
 
 impl<'a> Iterator for AllDirsIter<'a, '_> {
-    type Item = &'a FileInfo;
+    type Item = FileInfo<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        while let Some((path, info)) = self.cursor.next() {
+        while let Some((path, meta)) = self.cursor.next() {
             if !path.starts_with(self.lookup_path) {
                 return None;
             }
-            if info.is_dir {
-                return Some(info);
+            if meta.is_dir {
+                return Some(FileInfo {
+                    path,
+                    is_dir: meta.is_dir,
+                    size: meta.size,
+                    touched: meta.touched,
+                });
             }
         }
 
@@ -136,14 +151,13 @@ impl<'a> Iterator for AllDirsIter<'a, '_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::file_info::FileInfo;
+    use crate::file_info::FileMeta;
 
     fn build_test_structure() -> FilesDB {
         let mut db = FilesDB::new();
         db.add(
             PathBuf::from("/foo"),
-            FileInfo {
-                path: PathBuf::from("/foo"),
+            FileMeta {
                 is_dir: true,
                 size: None,
                 touched: None,
@@ -151,8 +165,7 @@ mod tests {
         );
         db.add(
             PathBuf::from("/foo/a.txt"),
-            FileInfo {
-                path: PathBuf::from("/foo/a.txt"),
+            FileMeta {
                 is_dir: false,
                 size: Some(10),
                 touched: None,
@@ -160,8 +173,7 @@ mod tests {
         );
         db.add(
             PathBuf::from("/foo/bar"),
-            FileInfo {
-                path: PathBuf::from("/foo/bar"),
+            FileMeta {
                 is_dir: true,
                 size: None,
                 touched: None,
@@ -169,8 +181,7 @@ mod tests {
         );
         db.add(
             PathBuf::from("/foo/bar/empty"),
-            FileInfo {
-                path: PathBuf::from("/foo/bar/empty"),
+            FileMeta {
                 is_dir: true,
                 size: None,
                 touched: None,
@@ -178,8 +189,7 @@ mod tests {
         );
         db.add(
             PathBuf::from("/foo/baz"),
-            FileInfo {
-                path: PathBuf::from("/foo/baz"),
+            FileMeta {
                 is_dir: true,
                 size: None,
                 touched: None,
@@ -187,8 +197,7 @@ mod tests {
         );
         db.add(
             PathBuf::from("/foo/baz/b.txt"),
-            FileInfo {
-                path: PathBuf::from("/foo/baz/b.txt"),
+            FileMeta {
                 is_dir: false,
                 size: Some(20),
                 touched: None,
@@ -221,9 +230,9 @@ mod tests {
         let q = PathBuf::from("/foo/baz");
         let mut it = db.iter_dir(&q);
 
-        assert_eq!(it.next().unwrap().path, PathBuf::from("/foo/baz"));
-        assert_eq!(it.next().unwrap().path, PathBuf::from("/foo/baz/b.txt"));
-        assert_eq!(it.next(), None);
+        assert_eq!(it.next().unwrap().path, &PathBuf::from("/foo/baz"));
+        assert_eq!(it.next().unwrap().path, &PathBuf::from("/foo/baz/b.txt"));
+        assert_eq!(it.next().is_none(), true);
     }
 
     #[test]
@@ -232,10 +241,10 @@ mod tests {
         let q = PathBuf::from("/foo");
         let mut it = db.iter_level(&q);
 
-        assert_eq!(it.next().unwrap().path, PathBuf::from("/foo/a.txt"));
-        assert_eq!(it.next().unwrap().path, PathBuf::from("/foo/bar"));
-        assert_eq!(it.next().unwrap().path, PathBuf::from("/foo/baz"));
-        assert_eq!(it.next(), None);
+        assert_eq!(it.next().unwrap().path, &PathBuf::from("/foo/a.txt"));
+        assert_eq!(it.next().unwrap().path, &PathBuf::from("/foo/bar"));
+        assert_eq!(it.next().unwrap().path, &PathBuf::from("/foo/baz"));
+        assert_eq!(it.next().is_none(), true);
     }
 
     #[test]
@@ -244,17 +253,17 @@ mod tests {
         let q = PathBuf::from("/foo");
         let mut it = db.iter_directories(&q);
 
-        assert_eq!(it.next().unwrap().path, PathBuf::from("/foo"));
-        assert_eq!(it.next().unwrap().path, PathBuf::from("/foo/bar"));
-        assert_eq!(it.next().unwrap().path, PathBuf::from("/foo/bar/empty"));
-        assert_eq!(it.next().unwrap().path, PathBuf::from("/foo/baz"));
-        assert_eq!(it.next(), None);
+        assert_eq!(it.next().unwrap().path, &PathBuf::from("/foo"));
+        assert_eq!(it.next().unwrap().path, &PathBuf::from("/foo/bar"));
+        assert_eq!(it.next().unwrap().path, &PathBuf::from("/foo/bar/empty"));
+        assert_eq!(it.next().unwrap().path, &PathBuf::from("/foo/baz"));
+        assert_eq!(it.next().is_none(), true);
 
         let q = PathBuf::from("/foo/bar");
         let mut it = db.iter_directories(&q);
 
-        assert_eq!(it.next().unwrap().path, PathBuf::from("/foo/bar"));
-        assert_eq!(it.next().unwrap().path, PathBuf::from("/foo/bar/empty"));
-        assert_eq!(it.next(), None);
+        assert_eq!(it.next().unwrap().path, &PathBuf::from("/foo/bar"));
+        assert_eq!(it.next().unwrap().path, &PathBuf::from("/foo/bar/empty"));
+        assert_eq!(it.next().is_none(), true);
     }
 }

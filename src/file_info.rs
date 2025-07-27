@@ -2,18 +2,16 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct FileInfo {
-    pub path: PathBuf,
+#[derive(Debug)]
+pub struct FileMeta {
     pub is_dir: bool,
     pub size: Option<u64>,
     pub touched: Option<SystemTime>,
 }
 
-impl FileInfo {
-    pub fn new(path: &Path, metadata: &fs::Metadata) -> Self {
+impl From<&fs::Metadata> for FileMeta {
+    fn from(metadata: &fs::Metadata) -> Self {
         Self {
-            path: path.to_path_buf(),
             is_dir: metadata.is_dir(),
             size: Some(metadata.len()),
             touched: metadata.modified().ok(),
@@ -21,9 +19,18 @@ impl FileInfo {
     }
 }
 
-pub fn get_file_info(path: &Path) -> Result<FileInfo, std::io::Error> {
+pub fn get_file_meta(path: &Path) -> Result<FileMeta, std::io::Error> {
     let metadata = fs::metadata(path).or(fs::symlink_metadata(path))?;
-    Ok(FileInfo::new(path, &metadata))
+    Ok(FileMeta::from(&metadata))
+}
+
+#[derive(Debug)]
+#[allow(dead_code)]
+pub struct FileInfo<'a> {
+    pub path: &'a PathBuf,
+    pub is_dir: bool,
+    pub size: Option<u64>,
+    pub touched: Option<SystemTime>,
 }
 
 #[cfg(test)]
@@ -39,14 +46,12 @@ mod tests {
         fs::write(&file_path, "Hello, World!").unwrap();
         let dir_size = fs::metadata(&dir_path).unwrap().len();
 
-        let file_info = get_file_info(&file_path).unwrap();
-        assert_eq!(file_info.path, file_path);
+        let file_info = get_file_meta(&file_path).unwrap();
         assert!(!file_info.is_dir);
         assert_eq!(file_info.size, Some(13));
         assert!(file_info.touched.is_some());
 
-        let file_info = get_file_info(&dir_path).unwrap();
-        assert_eq!(file_info.path, dir_path);
+        let file_info = get_file_meta(&dir_path).unwrap();
         assert!(file_info.is_dir);
         assert_eq!(file_info.size, Some(dir_size));
         assert!(file_info.touched.is_some());

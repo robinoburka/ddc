@@ -180,8 +180,8 @@ fn discovery_thread<D>(
         if definition.discovery {
             let detected_paths: Vec<&PathBuf> = db
                 .iter_directories(&definition.path)
-                .filter(|fi| detector.detect(db.deref(), &fi.path))
-                .map(|fi| &fi.path)
+                .filter(|fi| detector.detect(db.deref(), fi.path))
+                .map(|fi| fi.path)
                 .collect();
             detected_paths.iter().for_each(|p| {
                 let size = db.iter_dir(p).filter_map(|fi| fi.size).sum();

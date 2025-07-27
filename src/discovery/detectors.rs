@@ -51,13 +51,12 @@ mod tests {
     use std::path::PathBuf;
 
     use super::*;
-    use crate::file_info::FileInfo;
+    use crate::file_info::FileMeta;
 
     fn add_record(db: &mut FilesDB, path: &str) {
         db.add(
             PathBuf::from(path),
-            FileInfo {
-                path: PathBuf::from(path),
+            FileMeta {
                 is_dir: true,
                 size: None,
                 touched: None,

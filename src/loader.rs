@@ -8,7 +8,7 @@ use jwalk::{Parallelism, WalkDir};
 use tracing::{debug, debug_span};
 
 use crate::discovery::PathLoader;
-use crate::file_info::{FileInfo, get_file_info};
+use crate::file_info::get_file_meta;
 use crate::files_db::FilesDB;
 
 // The value was carefully tested and smaller numbers work better than higher.
@@ -33,16 +33,6 @@ fn walk_dir_paths(directory: &PathBuf) -> Vec<PathBuf> {
         .collect::<Vec<_>>()
 }
 
-fn walk_dir_file_infos(directory: &PathBuf) -> Vec<FileInfo> {
-    WalkDir::new(directory)
-        .parallelism(Parallelism::Serial)
-        .skip_hidden(false)
-        .into_iter()
-        .filter_map(|res| res.map(|de| de.path()).ok())
-        .filter_map(|path| get_file_info(&path).ok())
-        .collect::<Vec<_>>()
-}
-
 #[allow(dead_code)]
 #[derive(Default)]
 pub struct BaseLoader;
@@ -54,15 +44,22 @@ impl PathLoader for BaseLoader {
         scan_paths
             .into_par_iter()
             .for_each_with(sender, |sender, path| {
-                let infos = walk_dir_file_infos(path);
-                infos
+                let paths = walk_dir_paths(path);
+                paths
                     .into_iter()
-                    .for_each(|fi| sender.send((fi.path.clone(), fi)).unwrap());
+                    .filter_map(|path| match get_file_meta(&path) {
+                        Ok(meta) => Some((path, meta)),
+                        Err(_e) => {
+                            debug!("Failed to load info for {}", path.display());
+                            None
+                        }
+                    })
+                    .for_each(|(path, meta)| sender.send((path, meta)).unwrap());
             });
 
         let mut db = FilesDB::new();
-        receiver.iter().for_each(|(path, info)| {
-            db.add(path, info);
+        receiver.iter().for_each(|(path, meta)| {
+            db.add(path, meta);
         });
 
         db
@@ -99,8 +96,8 @@ impl PathLoader for FullyParallelLoader {
             let my_infos_sender = infos_sender.clone();
             thread::spawn(move || {
                 my_paths_receiver.iter().for_each(|path| {
-                    if let Ok(info) = get_file_info(&path) {
-                        my_infos_sender.send((path, info)).unwrap();
+                    if let Ok(meta) = get_file_meta(&path) {
+                        my_infos_sender.send((path, meta)).unwrap();
                     } else {
                         debug!("Failed to load info for {}", path.display());
                     }
@@ -111,8 +108,8 @@ impl PathLoader for FullyParallelLoader {
         drop(infos_sender);
 
         let mut db = FilesDB::new();
-        infos_receiver.iter().for_each(|(path, info)| {
-            db.add(path, info);
+        infos_receiver.iter().for_each(|(path, meta)| {
+            db.add(path, meta);
         });
         drop(infos_receiver);
 
