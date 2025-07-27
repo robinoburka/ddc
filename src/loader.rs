@@ -70,28 +70,38 @@ impl PathLoader for BaseLoader {
 pub struct FullyParallelLoader;
 
 impl FullyParallelLoader {
-    const NUM_THREADS: usize = 4;
+    const NUM_LOADER_THREADS: usize = 4;
+    const NUM_WORKER_THREADS: usize = 4;
 }
 
 impl PathLoader for FullyParallelLoader {
     fn load_multiple_paths(&self, scan_paths: &[PathBuf]) -> FilesDB {
+        let (sources_sender, sources_receiver) = channel::unbounded();
         let (paths_sender, paths_receiver) = channel::unbounded();
         let (infos_sender, infos_receiver) = channel::unbounded();
 
         scan_paths.iter().for_each(|path| {
-            let my_paths_sender = paths_sender.clone();
-            let path = path.clone();
-            thread::spawn(move || {
-                let _guard = debug_span!("walk_dir", path = ?path).entered();
-                let paths = walk_dir_paths(&path);
-                paths.into_iter().for_each(|path| {
-                    my_paths_sender.send(path).unwrap();
-                })
-            });
+            sources_sender.send(path.clone()).unwrap();
         });
+        drop(sources_sender);
+
+        for _ in 0..Self::NUM_LOADER_THREADS {
+            let my_paths_sender = paths_sender.clone();
+            let my_sources_receiver = sources_receiver.clone();
+            thread::spawn(move || {
+                my_sources_receiver.iter().for_each(|path| {
+                    let _guard = debug_span!("walk_dir", path = ?path).entered();
+                    let loaded_paths = walk_dir_paths(&path);
+                    loaded_paths.into_iter().for_each(|path| {
+                        my_paths_sender.send(path).unwrap();
+                    });
+                });
+            });
+        }
+        drop(sources_receiver);
         drop(paths_sender);
 
-        for _ in 0..Self::NUM_THREADS {
+        for _ in 0..Self::NUM_WORKER_THREADS {
             let my_paths_receiver = paths_receiver.clone();
             let my_infos_sender = infos_sender.clone();
             thread::spawn(move || {
