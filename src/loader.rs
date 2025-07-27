@@ -1,6 +1,5 @@
 use std::path::PathBuf;
 use std::sync::mpsc::channel;
-use std::thread;
 
 use crossbeam::channel;
 use jwalk::rayon::prelude::*;
@@ -88,7 +87,7 @@ impl PathLoader for FullyParallelLoader {
         for _ in 0..Self::NUM_LOADER_THREADS {
             let my_paths_sender = paths_sender.clone();
             let my_sources_receiver = sources_receiver.clone();
-            thread::spawn(move || {
+            rayon::spawn(move || {
                 my_sources_receiver.iter().for_each(|path| {
                     let _guard = debug_span!("walk_dir", path = ?path).entered();
                     let loaded_paths = walk_dir_paths(&path);
@@ -104,7 +103,7 @@ impl PathLoader for FullyParallelLoader {
         for _ in 0..Self::NUM_WORKER_THREADS {
             let my_paths_receiver = paths_receiver.clone();
             let my_infos_sender = infos_sender.clone();
-            thread::spawn(move || {
+            rayon::spawn(move || {
                 my_paths_receiver.iter().for_each(|path| {
                     if let Ok(meta) = get_file_meta(&path) {
                         my_infos_sender.send((path, meta)).unwrap();

@@ -256,6 +256,7 @@ dependencies = [
  "humansize",
  "jwalk",
  "owo-colors",
+ "rayon",
  "serde",
  "tabled",
  "tempfile",

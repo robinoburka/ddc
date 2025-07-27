@@ -4,7 +4,7 @@
 use anyhow::Context;
 use clap::Parser;
 use home::home_dir;
-use tracing::debug;
+use tracing::{debug, debug_span};
 
 use crate::analyze::analyze;
 use crate::cli::{AnalyzeArgs, Args, Commands};
@@ -27,6 +27,12 @@ fn main() -> anyhow::Result<()> {
     let args = Args::parse();
 
     setup_logging(LoggingLevel::from(args.verbosity)).context("Failed to set up logging")?;
+    {
+        let _guard = debug_span!("creating_thread_pool").entered();
+        rayon::ThreadPoolBuilder::new()
+            .build_global()
+            .context("Failed to create a thread pool")?;
+    }
 
     let home_dir = home_dir().context("Couldn't identify your home directory.")?;
     debug!("Home directory resolved as: {}", &home_dir.display());

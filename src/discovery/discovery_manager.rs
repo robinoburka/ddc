@@ -1,7 +1,6 @@
 use std::ops::Deref;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::thread;
 
 use crossbeam::channel;
 use crossbeam::channel::Sender;
@@ -128,7 +127,7 @@ impl<L: PathLoader> DiscoveryManager<L> {
 
         let db = self.db.clone();
         let definitions = self.definitions.clone();
-        thread::spawn(move || {
+        rayon::spawn(move || {
             let _guard = debug_span!("static_thread").entered();
             for pd in definitions.iter() {
                 if !pd.discovery {
@@ -162,7 +161,7 @@ fn spawn_discovery_thread<D>(
 ) where
     D: DynamicDetector,
 {
-    thread::spawn(move || {
+    rayon::spawn(move || {
         let _guard = debug_span!("discovery_thread", lang = ?D::LANG).entered();
         discovery_thread(db, definitions, detector, tx);
     });
