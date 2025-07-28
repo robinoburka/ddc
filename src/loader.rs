@@ -1,6 +1,5 @@
 use std::path::PathBuf;
 use std::sync::mpsc::channel;
-use std::time::Duration;
 
 use crossbeam::channel;
 use jwalk::rayon::prelude::*;
@@ -23,9 +22,7 @@ pub enum LoaderError {
 
 fn walk_dir_paths(directory: &PathBuf) -> Vec<PathBuf> {
     WalkDir::new(directory)
-        .parallelism(Parallelism::RayonDefaultPool {
-            busy_timeout: Duration::new(0, 100_000_000),
-        })
+        .parallelism(Parallelism::Serial)
         .skip_hidden(false)
         .into_iter()
         .filter_map(|res| res.map(|de| de.path()).ok())
@@ -69,7 +66,7 @@ impl PathLoader for BaseLoader {
 pub struct FullyParallelLoader;
 
 impl FullyParallelLoader {
-    const NUM_LOADER_THREADS: usize = 2;
+    const NUM_LOADER_THREADS: usize = 4;
     const NUM_WORKER_THREADS: usize = 4;
 }
 
