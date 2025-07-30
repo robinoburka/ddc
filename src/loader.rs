@@ -7,7 +7,7 @@ use jwalk::{Parallelism, WalkDir};
 use tracing::{debug, debug_span};
 
 use crate::discovery::PathLoader;
-use crate::file_info::get_file_meta;
+use crate::file_info::{FileMeta, get_file_meta};
 use crate::files_db::FilesDB;
 
 #[allow(dead_code)]
@@ -67,7 +67,8 @@ pub struct FullyParallelLoader;
 
 impl FullyParallelLoader {
     const NUM_LOADER_THREADS: usize = 4;
-    const NUM_WORKER_THREADS: usize = 4;
+    const NUM_WORKER_THREADS: usize = 6;
+    const BULK_SIZE: usize = 10000;
 }
 
 impl PathLoader for FullyParallelLoader {
@@ -85,13 +86,21 @@ impl PathLoader for FullyParallelLoader {
             let my_paths_sender = paths_sender.clone();
             let my_sources_receiver = sources_receiver.clone();
             rayon::spawn(move || {
-                my_sources_receiver.iter().for_each(|path| {
+                let mut buffer: Vec<PathBuf> = Vec::with_capacity(Self::BULK_SIZE);
+                for path in my_sources_receiver.iter() {
                     let _guard = debug_span!("walk_dir", path = ?path).entered();
                     let loaded_paths = walk_dir_paths(&path);
-                    loaded_paths.into_iter().for_each(|path| {
-                        my_paths_sender.send(path).unwrap();
-                    });
-                });
+                    for path in loaded_paths {
+                        buffer.push(path);
+                        if buffer.len() >= Self::BULK_SIZE {
+                            my_paths_sender.send(buffer).unwrap();
+                            buffer = Vec::with_capacity(Self::BULK_SIZE);
+                        }
+                    }
+                }
+                if !buffer.is_empty() {
+                    my_paths_sender.send(buffer).unwrap();
+                }
             });
         }
         drop(sources_receiver);
@@ -101,23 +110,37 @@ impl PathLoader for FullyParallelLoader {
             let my_paths_receiver = paths_receiver.clone();
             let my_infos_sender = infos_sender.clone();
             rayon::spawn(move || {
-                my_paths_receiver.iter().for_each(|path| {
-                    if let Ok(meta) = get_file_meta(&path) {
-                        my_infos_sender.send((path, meta)).unwrap();
-                    } else {
-                        debug!("Failed to load info for {}", path.display());
+                let mut out_buffer: Vec<(PathBuf, FileMeta)> = Vec::with_capacity(Self::BULK_SIZE);
+                for in_buffer in my_paths_receiver.iter() {
+                    for path in in_buffer {
+                        if let Ok(meta) = get_file_meta(&path) {
+                            out_buffer.push((path, meta));
+                            if out_buffer.len() >= Self::BULK_SIZE {
+                                my_infos_sender.send(out_buffer).unwrap();
+                                out_buffer = Vec::with_capacity(Self::BULK_SIZE);
+                            }
+                        } else {
+                            debug!("Failed to load info for {}", path.display());
+                        }
                     }
-                });
+                }
+                if !out_buffer.is_empty() {
+                    my_infos_sender.send(out_buffer).unwrap();
+                }
             });
         }
         drop(paths_receiver);
         drop(infos_sender);
 
         let mut db = FilesDB::new();
-        infos_receiver.iter().for_each(|(path, meta)| {
-            db.add(path, meta);
+        infos_receiver.iter().for_each(|in_buffer| {
+            for (path, meta) in in_buffer {
+                db.add(path, meta);
+            }
         });
         drop(infos_receiver);
+
+        debug!("Loaded {} files into files DB", db.len());
 
         db
     }
