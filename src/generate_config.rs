@@ -143,7 +143,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let root_path = tmp.path();
 
-        let input = "1\n";
+        let input = "2\n";
         let mut reader = io::Cursor::new(input);
 
         let mut buffer = Vec::new();
@@ -168,7 +168,7 @@ mod tests {
 
         fs::write(&root_path.join(".ddc.toml"), "Hello, World!").unwrap();
 
-        let input = "1\ny\n";
+        let input = "2\ny\n";
         let mut reader = io::Cursor::new(input);
 
         let mut buffer = Vec::new();
@@ -194,7 +194,7 @@ mod tests {
 
         fs::write(&root_path.join(".ddc.toml"), "Hello, World!").unwrap();
 
-        let input = "1\nn\n";
+        let input = "2\nn\n";
         let mut reader = io::Cursor::new(input);
 
         let mut buffer = Vec::new();
@@ -220,7 +220,7 @@ mod tests {
 
         fs::write(&root_path.join(".ddc.toml"), "Hello, World!").unwrap();
 
-        let input = "1\n\n";
+        let input = "2\n\n";
         let mut reader = io::Cursor::new(input);
 
         let mut buffer = Vec::new();

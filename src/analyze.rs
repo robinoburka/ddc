@@ -103,6 +103,7 @@ mod tests {
     fn test_analyze_requires_config() {
         let tmp = tempfile::tempdir().unwrap();
         let root_dir = tmp.path();
+        std::env::set_current_dir(&root_dir).unwrap();
 
         let result = analyze(AnalyzeArgs::default(), root_dir);
         assert!(
@@ -115,6 +116,7 @@ mod tests {
     fn test_analyze_must_read_config() {
         let tmp = tempfile::tempdir().unwrap();
         let root_dir = tmp.path();
+        std::env::set_current_dir(&root_dir).unwrap();
         fs::create_dir_all(root_dir.join(".ddc.toml")).unwrap();
 
         let result = analyze(AnalyzeArgs::default(), root_dir);
@@ -128,6 +130,7 @@ mod tests {
     fn test_analyze_must_parse_config() {
         let tmp = tempfile::tempdir().unwrap();
         let root_dir = tmp.path();
+        std::env::set_current_dir(&root_dir).unwrap();
         fs::write(&root_dir.join(".ddc.toml"), "").unwrap();
 
         let result = analyze(AnalyzeArgs::default(), root_dir);
@@ -141,6 +144,7 @@ mod tests {
     fn test_analyze_show_definitions() {
         let tmp = tempfile::tempdir().unwrap();
         let root_dir = tmp.path();
+        std::env::set_current_dir(&root_dir).unwrap();
 
         let mut buffer = Vec::new();
         let result = analyze_inner(
@@ -169,6 +173,7 @@ mod tests {
     fn test_analyze_discovery() {
         let tmp = tempfile::tempdir().unwrap();
         let root_path = tmp.path();
+        std::env::set_current_dir(&root_path).unwrap();
 
         fs::create_dir_all(root_path.join("projects/python/venv/bin")).unwrap();
         fs::write(
