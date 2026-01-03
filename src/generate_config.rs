@@ -1,7 +1,9 @@
 use std::fs;
-use std::io::{self, BufRead, Write};
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
+use dialoguer::theme::ColorfulTheme;
+use dialoguer::{Confirm, Select};
 use owo_colors::OwoColorize;
 use tracing::debug;
 
@@ -18,22 +20,34 @@ pub enum GenerateConfigError {
         #[from]
         inner: std::io::Error,
     },
+    #[error("Failed to obtain info from the user: {inner}")]
+    CannotObtainData {
+        #[from]
+        inner: dialoguer::Error,
+    },
 }
 
 pub fn generate_config(home_dir: &Path) -> Result<(), GenerateConfigError> {
-    generate_config_inner(&mut io::stdin().lock(), &mut io::stdout(), home_dir)
+    let mut interaction = DialoguerInteraction;
+    generate_config_inner(&mut io::stdout(), &mut interaction, home_dir)
 }
 
-fn generate_config_inner<R: BufRead, W: Write>(
-    input: &mut R,
+fn generate_config_inner<W: Write, I: GenerateConfigInteraction>(
     out: &mut W,
+    interaction: &mut I,
     home_dir: &Path,
 ) -> Result<(), GenerateConfigError> {
     let example_config = include_str!("../assets/example_config.toml");
+    let candidates = get_config_file_candidates(home_dir);
 
-    let path = obtain_path(input, out, home_dir).ok_or(GenerateConfigError::Interrupted)?;
-    writeln!(out, "{}", path.display().dimmed()).expect("Failed to write to stdout");
-    write_to_path(input, out, &path)?;
+    let path = interaction.select_path(&candidates)?;
+    debug!("Looking for a configuration file: {}", path.display());
+    if path.exists() {
+        let confirmation = interaction.confirm_overwrite()?;
+        if !confirmation {
+            return Err(GenerateConfigError::AlreadyExist);
+        }
+    }
 
     debug!("Using configuration file: {}", path.display());
     fs::write(&path, example_config)?;
@@ -47,87 +61,54 @@ fn generate_config_inner<R: BufRead, W: Write>(
     writeln!(
         out,
         "Go to the file ({}) and adjust the content based on your needs.",
-        path.display().dimmed()
+        path.display().green()
     )
     .expect("Failed to write to stdout");
 
     Ok(())
 }
 
-fn obtain_path<R: BufRead, W: Write>(
-    input: &mut R,
-    out: &mut W,
-    home_dir: &Path,
-) -> Option<PathBuf> {
-    let candidates = get_config_file_candidates(home_dir);
-
-    writeln!(out, "Select preferred location for the configuration file:")
-        .expect("Failed to write to stdout");
-    for (i, path) in candidates.iter().enumerate() {
-        writeln!(
-            out,
-            "  {}: {}",
-            i.bold().bright_yellow(),
-            path.display().bright_cyan()
-        )
-        .expect("Failed to write to stdout");
-    }
-    writeln!(out, "{}",
-        "Note: The relative path choice is suitable for development purposes. Prefer any 'dotfile' variant for production.".dimmed()
-    ).expect("Failed to write to stdout");
-
-    loop {
-        let mut response = String::new();
-        write!(
-            out,
-            "\n{}",
-            format!("Choose a path ([0-{}]/q)> ", candidates.len() - 1).bold()
-        )
-        .expect("Failed to write to stdout");
-        out.flush().expect("Failed to flush stdout");
-        input.read_line(&mut response).expect("Failed to read line");
-        let choice: usize = match response.trim().to_lowercase().as_str() {
-            "q" => break None,
-            number => match number.parse() {
-                Err(_) => {
-                    writeln!(out, "{}", "Please enter a valid number.".bright_red())
-                        .expect("Failed to write to stdout");
-                    continue;
-                }
-                Ok(num) if num >= candidates.len() => {
-                    writeln!(out, "{}", "Please enter a valid choice.".bright_red())
-                        .expect("Failed to write to stdout");
-                    continue;
-                }
-                Ok(num) => num,
-            },
-        };
-        break Some(candidates[choice].clone());
-    }
+trait GenerateConfigInteraction {
+    fn select_path(&mut self, candidates: &[PathBuf]) -> Result<PathBuf, GenerateConfigError>;
+    fn confirm_overwrite(&mut self) -> Result<bool, GenerateConfigError>;
 }
 
-fn write_to_path<R: BufRead, W: Write>(
-    input: &mut R,
-    out: &mut W,
-    path: &Path,
-) -> Result<(), GenerateConfigError> {
-    debug!("Looking for a configuration file: {}", path.display());
-    if !path.exists() {
-        return Ok(());
+struct DialoguerInteraction;
+
+impl GenerateConfigInteraction for DialoguerInteraction {
+    fn select_path(&mut self, candidates: &[PathBuf]) -> Result<PathBuf, GenerateConfigError> {
+        let candidates_to_display = candidates
+            .iter()
+            .map(|p| p.display().to_string())
+            .collect::<Vec<_>>();
+
+        let selection = Select::with_theme(&ColorfulTheme::default())
+            .with_prompt("Select preferred location for the configuration file:")
+            .items(&candidates_to_display)
+            .default(1)
+            .report(true)
+            .clear(true)
+            .interact_opt()?
+            .ok_or(GenerateConfigError::Interrupted)?;
+
+        let requested_path = candidates
+            .get(selection)
+            .expect("Obtained option ot ouf the range. Programmer error?");
+
+        Ok(requested_path.clone())
     }
-    write!(
-        out,
-        "\n{}",
-        "File already exists. Overwrite? (y/N)> ".bold()
-    )
-    .expect("Failed to write to stdout");
-    out.flush().expect("Failed to flush stdout");
-    let mut response = String::new();
-    input.read_line(&mut response).expect("Failed to read line");
-    match response.trim().to_lowercase().as_str() {
-        "y" => Ok(()),
-        "n" => Err(GenerateConfigError::AlreadyExist),
-        _ => Err(GenerateConfigError::AlreadyExist),
+
+    fn confirm_overwrite(&mut self) -> Result<bool, GenerateConfigError> {
+        let confirmation = Confirm::with_theme(&ColorfulTheme::default())
+            .with_prompt("File already exists. Overwrite?")
+            .default(false)
+            .show_default(true)
+            .report(true)
+            .wait_for_newline(false)
+            .interact_opt()?
+            .ok_or(GenerateConfigError::Interrupted)?;
+
+        Ok(confirmation)
     }
 }
 
@@ -138,21 +119,36 @@ mod tests {
     use super::*;
     use crate::config::Config;
 
+    struct TestsInteraction {
+        select: usize,
+        confirmation: Option<Result<bool, GenerateConfigError>>,
+    }
+
+    impl GenerateConfigInteraction for TestsInteraction {
+        fn select_path(&mut self, candidates: &[PathBuf]) -> Result<PathBuf, GenerateConfigError> {
+            Ok(candidates.get(self.select).unwrap().clone())
+        }
+
+        fn confirm_overwrite(&mut self) -> Result<bool, GenerateConfigError> {
+            self.confirmation.take().unwrap()
+        }
+    }
+
     #[test]
     fn test_generate_config_on_path() {
         let tmp = tempfile::tempdir().unwrap();
         let root_path = tmp.path();
 
-        let input = "2\n";
-        let mut reader = io::Cursor::new(input);
-
         let mut buffer = Vec::new();
-        let results = generate_config_inner(&mut reader, &mut buffer, root_path);
+        let mut interaction = TestsInteraction {
+            select: 2,
+            confirmation: Some(Ok(false)),
+        };
+
+        let results = generate_config_inner(&mut buffer, &mut interaction, root_path);
         assert_eq!(results.unwrap(), ());
 
         let output = String::from_utf8(buffer).unwrap();
-        assert!(output.contains("Select preferred location for the configuration file"));
-        assert!(output.contains("Choose a path"));
         assert!(output.contains("Configuration file was successfully created!"));
         assert!(output.contains("Go to the file"));
         assert!(output.contains(".ddc.toml"));
@@ -168,17 +164,16 @@ mod tests {
 
         fs::write(&root_path.join(".ddc.toml"), "Hello, World!").unwrap();
 
-        let input = "2\ny\n";
-        let mut reader = io::Cursor::new(input);
-
         let mut buffer = Vec::new();
-        let results = generate_config_inner(&mut reader, &mut buffer, root_path);
+        let mut interaction = TestsInteraction {
+            select: 2,
+            confirmation: Some(Ok(true)),
+        };
+
+        let results = generate_config_inner(&mut buffer, &mut interaction, root_path);
         assert_eq!(results.unwrap(), ());
 
         let output = String::from_utf8(buffer).unwrap();
-        assert!(output.contains("Select preferred location for the configuration file"));
-        assert!(output.contains("Choose a path"));
-        assert!(output.contains("File already exists. Overwrite?"));
         assert!(output.contains("Configuration file was successfully created!"));
         assert!(output.contains("Go to the file"));
         assert!(output.contains(".ddc.toml"));
@@ -194,17 +189,14 @@ mod tests {
 
         fs::write(&root_path.join(".ddc.toml"), "Hello, World!").unwrap();
 
-        let input = "2\nn\n";
-        let mut reader = io::Cursor::new(input);
-
         let mut buffer = Vec::new();
-        let results = generate_config_inner(&mut reader, &mut buffer, root_path);
-        assert!(matches!(results, Err(GenerateConfigError::AlreadyExist)));
+        let mut interaction = TestsInteraction {
+            select: 2,
+            confirmation: Some(Ok(false)),
+        };
 
-        let output = String::from_utf8(buffer).unwrap();
-        assert!(output.contains("Select preferred location for the configuration file"));
-        assert!(output.contains("Choose a path"));
-        assert!(output.contains("File already exists. Overwrite?"));
+        let results = generate_config_inner(&mut buffer, &mut interaction, root_path);
+        assert!(matches!(results, Err(GenerateConfigError::AlreadyExist)));
 
         let cfg_data = fs::read_to_string(&root_path.join(".ddc.toml")).unwrap();
         assert!(matches!(
@@ -220,17 +212,14 @@ mod tests {
 
         fs::write(&root_path.join(".ddc.toml"), "Hello, World!").unwrap();
 
-        let input = "2\n\n";
-        let mut reader = io::Cursor::new(input);
-
         let mut buffer = Vec::new();
-        let results = generate_config_inner(&mut reader, &mut buffer, root_path);
-        assert!(matches!(results, Err(GenerateConfigError::AlreadyExist)));
+        let mut interaction = TestsInteraction {
+            select: 2,
+            confirmation: Some(Ok(false)),
+        };
 
-        let output = String::from_utf8(buffer).unwrap();
-        assert!(output.contains("Select preferred location for the configuration file"));
-        assert!(output.contains("Choose a path"));
-        assert!(output.contains("File already exists. Overwrite?"));
+        let results = generate_config_inner(&mut buffer, &mut interaction, root_path);
+        assert!(matches!(results, Err(GenerateConfigError::AlreadyExist)));
 
         let cfg_data = fs::read_to_string(&root_path.join(".ddc.toml")).unwrap();
         assert!(matches!(
@@ -246,40 +235,19 @@ mod tests {
 
         fs::write(&root_path.join(".ddc.toml"), "Hello, World!").unwrap();
 
-        let input = "q\n";
-        let mut reader = io::Cursor::new(input);
-
         let mut buffer = Vec::new();
-        let results = generate_config_inner(&mut reader, &mut buffer, root_path);
-        assert!(matches!(results, Err(GenerateConfigError::Interrupted)));
+        let mut interaction = TestsInteraction {
+            select: 2,
+            confirmation: Some(Err(GenerateConfigError::Interrupted)),
+        };
 
-        let output = String::from_utf8(buffer).unwrap();
-        assert!(output.contains("Select preferred location for the configuration file"));
-        assert!(output.contains("Choose a path"));
+        let results = generate_config_inner(&mut buffer, &mut interaction, root_path);
+        assert!(matches!(results, Err(GenerateConfigError::Interrupted)));
 
         let cfg_data = fs::read_to_string(&root_path.join(".ddc.toml")).unwrap();
         assert!(matches!(
             toml::from_str::<Config>(cfg_data.as_str()),
             Err(_)
         ));
-    }
-
-    #[test]
-    fn test_generate_config_on_path_invalid_inputs() {
-        let tmp = tempfile::tempdir().unwrap();
-        let root_path = tmp.path();
-
-        let input = "x\n42\nq\n";
-        let mut reader = io::Cursor::new(input);
-
-        let mut buffer = Vec::new();
-        let results = generate_config_inner(&mut reader, &mut buffer, root_path);
-        assert!(matches!(results, Err(GenerateConfigError::Interrupted)));
-
-        let output = String::from_utf8(buffer).unwrap();
-        assert!(output.contains("Select preferred location for the configuration file"));
-        assert!(output.contains("Choose a path"));
-        assert!(output.contains("Please enter a valid number."));
-        assert!(output.contains("Please enter a valid choice."));
     }
 }
