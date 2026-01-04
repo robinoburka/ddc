@@ -26,6 +26,7 @@ tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.19", features = ["env-filter", "json", "registry"] }
 rayon = "1.10.0"
 dialoguer = { version = "0.12.0", default-features = false }
+indicatif = "0.18.3"
 
 [dev-dependencies]
 tempfile = "3.20.0"

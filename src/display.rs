@@ -2,13 +2,15 @@ use std::io::Write;
 use std::time::{Duration, SystemTime};
 
 use chrono::{DateTime, Local};
+use crossbeam::channel::Receiver;
 use humansize::{DECIMAL, format_size};
+use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use tabled::settings::object::Rows;
 use tabled::settings::{Alignment, Color, Modify, Panel, Style, object::Cell};
 use tabled::{Table, Tabled};
 use tracing::instrument;
 
-use crate::discovery::{DiscoveryResult, ResultType};
+use crate::discovery::{DiscoveryResult, ProgressEvent, ResultType};
 
 #[instrument(level = "debug", skip(out, discovery_results))]
 pub fn print_results<W: Write>(out: &mut W, discovery_results: Vec<DiscoveryResult>) {
@@ -139,8 +141,104 @@ fn time_color_coded(now: &SystemTime, time: &Option<SystemTime>) -> Color {
     }
 }
 
+pub fn display_progress_bar(events_receiver: Receiver<ProgressEvent>) {
+    let mp = MultiProgress::new();
+
+    let spinner_style =
+        ProgressStyle::with_template("{prefix:<12.bold} {spinner:.cyan} {msg}").unwrap();
+    let bar_style = ProgressStyle::with_template(
+        "{prefix:>12} [{bar:40.cyan/blue}] {human_pos:.dim}/{human_len:.dim} {msg}",
+    )
+    .unwrap()
+    .progress_chars("##-");
+
+    let mut scan_parent: Option<ProgressBar> = None;
+    let mut definitions_pb: Option<ProgressBar> = None;
+    let mut paths_pb: Option<ProgressBar> = None;
+    let mut discover_parent: Option<ProgressBar> = None;
+    let mut detectors_pb: Option<ProgressBar> = None;
+
+    for event in events_receiver.iter() {
+        match event {
+            ProgressEvent::WalkStart { count } => {
+                let parent = mp.add(ProgressBar::new_spinner());
+                parent.set_prefix("Scan");
+                parent.set_style(spinner_style.clone());
+                parent.set_message("scanning directories");
+                parent.enable_steady_tick(Duration::from_millis(100));
+                scan_parent = Some(parent);
+
+                let defs = mp.add(ProgressBar::new(count as u64));
+                defs.set_prefix("definitions");
+                defs.set_style(bar_style.clone());
+                definitions_pb = Some(defs);
+
+                let load = mp.add(ProgressBar::new(0));
+                load.set_prefix("paths");
+                load.set_style(bar_style.clone());
+                paths_pb = Some(load);
+            }
+            ProgressEvent::WalkAddPaths { count } => {
+                if let Some(pb) = &definitions_pb {
+                    pb.inc(1);
+                }
+                if let Some(pb) = &paths_pb {
+                    let new_len = pb.length().unwrap_or(0) + count as u64;
+                    pb.set_length(new_len);
+                }
+            }
+            ProgressEvent::WalkAdvance => {
+                if let Some(pb) = &paths_pb {
+                    pb.inc(1);
+                }
+            }
+            ProgressEvent::WalkFinished => {
+                if let Some(pb) = &definitions_pb {
+                    pb.finish();
+                }
+                if let Some(pb) = &paths_pb {
+                    pb.finish();
+                }
+                if let Some(pb) = &scan_parent {
+                    pb.finish_with_message("done");
+                }
+            }
+            ProgressEvent::DiscoveryStart { count } => {
+                let parent = mp.add(ProgressBar::new_spinner());
+                parent.set_prefix("Discover");
+                parent.set_style(spinner_style.clone());
+                parent.set_message("analyzing directories");
+                parent.enable_steady_tick(Duration::from_millis(100));
+                discover_parent = Some(parent);
+
+                let pb = mp.add(ProgressBar::new(count as u64));
+                pb.set_prefix("detectors");
+                pb.set_style(bar_style.clone());
+                detectors_pb = Some(pb);
+            }
+            ProgressEvent::DiscoveryAdvance => {
+                if let Some(pb) = &detectors_pb {
+                    pb.inc(1);
+                }
+            }
+            ProgressEvent::DiscoveryFinished => {
+                if let Some(pb) = &detectors_pb {
+                    pb.finish();
+                }
+                if let Some(pb) = &discover_parent {
+                    pb.finish_with_message("done");
+                }
+            }
+        }
+    }
+
+    let _ = mp.clear();
+}
+
 #[cfg(test)]
 mod tests {
+    use crossbeam::channel;
+
     use super::*;
 
     #[test]
@@ -186,5 +284,25 @@ mod tests {
             time_color_coded(&now, &Some(now - Duration::from_days(70))),
             Color::FG_RED
         );
+    }
+
+    #[test]
+    fn test_display_progress_bar_consumes_messages() {
+        // This test has lower value. It just tests, that display_progress_bar
+        // is able to consume reasonably looking report. It doesn't check the visual reaction though.
+        let (tx, rx) = channel::unbounded();
+
+        tx.send(ProgressEvent::WalkStart { count: 1 }).unwrap();
+        tx.send(ProgressEvent::WalkAddPaths { count: 1 }).unwrap();
+        tx.send(ProgressEvent::WalkAddPaths { count: 1 }).unwrap();
+        tx.send(ProgressEvent::WalkAdvance).unwrap();
+        tx.send(ProgressEvent::WalkAdvance).unwrap();
+        tx.send(ProgressEvent::WalkFinished).unwrap();
+        drop(tx);
+
+        let eval_rx = rx.clone();
+        display_progress_bar(rx);
+
+        assert_eq!(eval_rx.len(), 0);
     }
 }

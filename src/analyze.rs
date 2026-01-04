@@ -8,7 +8,7 @@ use tracing::{debug, error};
 use crate::cli::{AnalyzeArgs, COMMAND_NAME};
 use crate::config::{Config, get_config_file_candidates};
 use crate::discovery::{DiscoveryManager, default_discovery_definitions};
-use crate::display::print_results;
+use crate::display::{display_progress_bar, print_results};
 
 #[derive(thiserror::Error, Debug)]
 pub enum AnalyzeError {
@@ -55,10 +55,15 @@ fn analyze_inner<W: Write>(
     let cfg_data = fs::read_to_string(&cfg_path)?;
     let config: Config = toml::from_str(cfg_data.as_str())?;
 
-    let discovery_results = DiscoveryManager::with_default_loader(home_dir)
-        .add_from_config(&config)
-        .collect();
+    let discovery_manager =
+        DiscoveryManager::with_default_loader(home_dir).add_from_config(&config);
 
+    let progress_channel = discovery_manager.subscribe();
+    rayon::spawn(move || {
+        display_progress_bar(progress_channel);
+    });
+
+    let discovery_results = discovery_manager.collect();
     if discovery_results.is_empty() {
         error!("No results found.");
         return Err(AnalyzeError::NoResultsFound);
