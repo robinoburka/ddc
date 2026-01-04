@@ -6,7 +6,7 @@ use jwalk::rayon::prelude::*;
 use jwalk::{Parallelism, WalkDir};
 use tracing::{debug, debug_span};
 
-use crate::discovery::PathLoader;
+use crate::discovery::{PathLoader, ProgressEvent, ProgressReporter};
 use crate::file_info::get_file_meta;
 use crate::files_db::FilesDB;
 
@@ -34,7 +34,11 @@ fn walk_dir_paths(directory: &PathBuf) -> Vec<PathBuf> {
 pub struct BaseLoader;
 
 impl PathLoader for BaseLoader {
-    fn load_multiple_paths(&self, scan_paths: &[PathBuf]) -> FilesDB {
+    fn load_multiple_paths<R: ProgressReporter>(
+        &self,
+        scan_paths: &[PathBuf],
+        _progress: Option<R>,
+    ) -> FilesDB {
         let (sender, receiver) = channel();
 
         scan_paths
@@ -71,10 +75,20 @@ impl FullyParallelLoader {
 }
 
 impl PathLoader for FullyParallelLoader {
-    fn load_multiple_paths(&self, scan_paths: &[PathBuf]) -> FilesDB {
+    fn load_multiple_paths<R: ProgressReporter>(
+        &self,
+        scan_paths: &[PathBuf],
+        progress: Option<R>,
+    ) -> FilesDB {
         let (sources_sender, sources_receiver) = channel::unbounded();
         let (paths_sender, paths_receiver) = channel::unbounded();
         let (infos_sender, infos_receiver) = channel::unbounded();
+
+        progress.as_ref().inspect(|r| {
+            r.report(ProgressEvent::WalkStart {
+                count: scan_paths.len(),
+            })
+        });
 
         scan_paths.iter().for_each(|path| {
             sources_sender.send(path.clone()).unwrap();
@@ -84,10 +98,16 @@ impl PathLoader for FullyParallelLoader {
         for _ in 0..Self::NUM_LOADER_THREADS {
             let my_paths_sender = paths_sender.clone();
             let my_sources_receiver = sources_receiver.clone();
+            let my_progress = progress.clone();
             rayon::spawn(move || {
                 my_sources_receiver.iter().for_each(|path| {
                     let _guard = debug_span!("walk_dir", path = ?path).entered();
                     let loaded_paths = walk_dir_paths(&path);
+                    my_progress.as_ref().inspect(|r| {
+                        r.report(ProgressEvent::WalkAddPaths {
+                            count: loaded_paths.len(),
+                        })
+                    });
                     loaded_paths.into_iter().for_each(|path| {
                         my_paths_sender.send(path).unwrap();
                     });
@@ -100,8 +120,12 @@ impl PathLoader for FullyParallelLoader {
         for _ in 0..Self::NUM_WORKER_THREADS {
             let my_paths_receiver = paths_receiver.clone();
             let my_infos_sender = infos_sender.clone();
+            let my_progress = progress.clone();
             rayon::spawn(move || {
                 my_paths_receiver.iter().for_each(|path| {
+                    my_progress
+                        .as_ref()
+                        .inspect(|r| r.report(ProgressEvent::WalkAdvance));
                     if let Ok(meta) = get_file_meta(&path) {
                         my_infos_sender.send((path, meta)).unwrap();
                     } else {
@@ -119,6 +143,10 @@ impl PathLoader for FullyParallelLoader {
         });
         drop(infos_receiver);
 
+        progress
+            .as_ref()
+            .inspect(|r| r.report(ProgressEvent::WalkFinished));
+
         db
     }
 }
@@ -130,6 +158,13 @@ mod tests {
     use tempfile::tempdir;
 
     use super::*;
+
+    #[derive(Clone)]
+    struct MockReporter;
+
+    impl ProgressReporter for MockReporter {
+        fn report(&self, _event: ProgressEvent) {}
+    }
 
     #[test]
     fn test_base_loader() {
@@ -149,7 +184,7 @@ mod tests {
         fs::create_dir_all(&dir_path).unwrap();
         fs::write(&file_path, "Hello, World!").unwrap();
 
-        let db = loader.load_multiple_paths(&[root_path.to_path_buf()]);
+        let db = loader.load_multiple_paths(&[root_path.to_path_buf()], Some(MockReporter));
 
         assert!(db.exists(&root_path.join("foo")));
         assert!(db.is_dir(&root_path.join("foo")));

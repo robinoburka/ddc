@@ -3,21 +3,25 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use crossbeam::channel;
-use crossbeam::channel::Sender;
+use crossbeam::channel::{Receiver, Sender};
 use tracing::{debug_span, instrument, warn};
 
 use crate::config::Config;
 use crate::discovery::default_definitions::default_discovery_definitions;
 use crate::discovery::detectors::{JsNpmDetector, PythonVenvDetector, RustBuildDirDetector};
 use crate::discovery::discovery_definitions::ResultType;
+use crate::discovery::progress::{ProgressEvent, ProgressReporter};
 use crate::discovery::{DiscoveryDefinition, DiscoveryResult};
 use crate::files_db::FilesDB;
 use crate::loader::FullyParallelLoader;
 use crate::types::Language;
 
 pub trait PathLoader: Default {
-    // There should be better encapsulation than this
-    fn load_multiple_paths(&self, scan_paths: &[PathBuf]) -> FilesDB;
+    fn load_multiple_paths<R: ProgressReporter>(
+        &self,
+        scan_paths: &[PathBuf],
+        progress: Option<R>,
+    ) -> FilesDB;
 }
 
 pub trait DynamicDetector: Default + Send + Sync + 'static {
@@ -25,20 +29,43 @@ pub trait DynamicDetector: Default + Send + Sync + 'static {
     fn detect(&self, db: &FilesDB, path: &Path) -> bool;
 }
 
+#[derive(Clone)]
+pub struct ChannelProgressReporter {
+    tx: Sender<ProgressEvent>,
+}
+
+impl ChannelProgressReporter {
+    pub fn new(tx: Sender<ProgressEvent>) -> Self {
+        Self { tx }
+    }
+}
+
+impl ProgressReporter for ChannelProgressReporter {
+    fn report(&self, event: ProgressEvent) {
+        let _ = self.tx.try_send(event);
+    }
+}
+
 pub struct DiscoveryManager<L: PathLoader> {
     home: PathBuf,
     loader: L,
     db: Arc<FilesDB>,
     definitions: Arc<Vec<DiscoveryDefinition>>,
+    progress_tx: Sender<ProgressEvent>,
+    progress_rx: Receiver<ProgressEvent>,
 }
 
 impl DiscoveryManager<FullyParallelLoader> {
     pub fn with_default_loader(home: &Path) -> Self {
+        let (progress_tx, progress_rx) = channel::bounded(100);
+
         Self {
             home: home.to_path_buf(),
             loader: FullyParallelLoader,
             db: Arc::new(FilesDB::new()),
             definitions: Arc::new(default_discovery_definitions(home)),
+            progress_tx,
+            progress_rx,
         }
     }
 }
@@ -46,11 +73,15 @@ impl DiscoveryManager<FullyParallelLoader> {
 impl<L: PathLoader> DiscoveryManager<L> {
     #[allow(dead_code)]
     pub fn new(loader: L, home: &Path) -> Self {
+        let (progress_tx, progress_rx) = channel::bounded(100);
+
         Self {
             home: home.to_path_buf(),
             loader,
             db: Arc::new(FilesDB::new()),
             definitions: Arc::new(default_discovery_definitions(home)),
+            progress_tx,
+            progress_rx,
         }
     }
 
@@ -87,9 +118,19 @@ impl<L: PathLoader> DiscoveryManager<L> {
         self
     }
 
+    pub fn subscribe(&self) -> Receiver<ProgressEvent> {
+        self.progress_rx.clone()
+    }
+
+    fn create_reporter(&self) -> ChannelProgressReporter {
+        ChannelProgressReporter::new(self.progress_tx.clone())
+    }
+
     pub fn collect(mut self) -> Vec<DiscoveryResult> {
         self.load_paths();
-        self.discover()
+        let results = self.discover();
+        drop(self.progress_tx);
+        results
     }
 
     #[instrument(level = "debug", skip(self))]
@@ -99,11 +140,15 @@ impl<L: PathLoader> DiscoveryManager<L> {
             .iter()
             .map(|def| def.path.clone())
             .collect::<Vec<_>>();
-        self.db = Arc::new(self.loader.load_multiple_paths(&paths));
+        let reporter = self.create_reporter();
+        self.db = Arc::new(self.loader.load_multiple_paths(&paths, Some(reporter)));
     }
 
     #[instrument(level = "debug", skip(self))]
     fn discover(&mut self) -> Vec<DiscoveryResult> {
+        let reporter = self.create_reporter();
+        reporter.report(ProgressEvent::DiscoveryStart { count: 4 });
+
         let mut results = vec![];
         let (tx, rx) = channel::unbounded();
         spawn_discovery_thread(
@@ -111,22 +156,26 @@ impl<L: PathLoader> DiscoveryManager<L> {
             self.definitions.clone(),
             RustBuildDirDetector,
             tx.clone(),
+            self.create_reporter(),
         );
         spawn_discovery_thread(
             self.db.clone(),
             self.definitions.clone(),
             PythonVenvDetector,
             tx.clone(),
+            self.create_reporter(),
         );
         spawn_discovery_thread(
             self.db.clone(),
             self.definitions.clone(),
             JsNpmDetector,
             tx.clone(),
+            self.create_reporter(),
         );
 
         let db = self.db.clone();
         let definitions = self.definitions.clone();
+        let thread_reporter = reporter.clone();
         rayon::spawn(move || {
             let _guard = debug_span!("static_thread").entered();
             for pd in definitions.iter() {
@@ -143,37 +192,44 @@ impl<L: PathLoader> DiscoveryManager<L> {
                     tx.send(r).unwrap();
                 }
             }
+            thread_reporter.report(ProgressEvent::DiscoveryAdvance)
         });
 
         for res in rx.iter() {
             results.push(res);
         }
 
+        reporter.report(ProgressEvent::DiscoveryFinished);
+
         results
     }
 }
 
-fn spawn_discovery_thread<D>(
+fn spawn_discovery_thread<D, R>(
     db: Arc<FilesDB>,
     definitions: Arc<Vec<DiscoveryDefinition>>,
     detector: D,
     tx: Sender<DiscoveryResult>,
+    progress: R,
 ) where
     D: DynamicDetector,
+    R: ProgressReporter,
 {
     rayon::spawn(move || {
         let _guard = debug_span!("discovery_thread", lang = ?D::LANG).entered();
-        discovery_thread(db, definitions, detector, tx);
+        discovery_thread(db, definitions, detector, tx, progress);
     });
 }
 
-fn discovery_thread<D>(
+fn discovery_thread<D, R>(
     db: Arc<FilesDB>,
     discovery_definitions: Arc<Vec<DiscoveryDefinition>>,
     detector: D,
     tx: Sender<DiscoveryResult>,
+    progress: R,
 ) where
     D: DynamicDetector,
+    R: ProgressReporter,
 {
     for definition in discovery_definitions.iter() {
         if definition.discovery {
@@ -196,6 +252,7 @@ fn discovery_thread<D>(
             });
         }
     }
+    progress.report(ProgressEvent::DiscoveryAdvance);
 }
 
 #[cfg(test)]
@@ -251,9 +308,10 @@ mod tests {
             ],
         };
 
-        let discovery_results = DiscoveryManager::with_default_loader(root_path)
-            .add_from_config(&config)
-            .collect();
+        let discovery_manager =
+            DiscoveryManager::with_default_loader(root_path).add_from_config(&config);
+        let progress = discovery_manager.subscribe();
+        let discovery_results = discovery_manager.collect();
 
         let mut found_paths: Vec<_> = discovery_results.iter().filter(|r| r.size > 0).collect();
         found_paths.sort_by_key(|r| r.path.clone());
@@ -305,5 +363,18 @@ mod tests {
         assert_eq!(found_paths[3].lang, Some(Language::Rust));
         let dirs_size = fs::metadata(&root_path.join("to_sum")).unwrap().len();
         assert_eq!(found_paths[3].size, dirs_size + 13);
+
+        // Quick check of the most important events collected from progress reporter
+        let progress_report = progress.iter().collect::<Vec<_>>();
+        assert!(progress_report.contains(&ProgressEvent::WalkStart {
+            count: config.paths.len() + default_discovery_definitions(root_path).len()
+        }));
+        // 2 files in projects/ mocked path
+        assert!(progress_report.contains(&ProgressEvent::WalkAddPaths { count: 2 }));
+        assert!(progress_report.contains(&ProgressEvent::WalkFinished));
+        // Current count of expected detectors 3 + 1 for non-discovery definitions
+        assert!(progress_report.contains(&ProgressEvent::DiscoveryStart { count: 4 }));
+        assert!(progress_report.contains(&ProgressEvent::DiscoveryAdvance));
+        assert!(progress_report.contains(&ProgressEvent::DiscoveryFinished));
     }
 }
