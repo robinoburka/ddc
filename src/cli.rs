@@ -19,6 +19,9 @@ pub enum Commands {
 
     /// Analyzes data (default command)
     Analyze(AnalyzeArgs),
+
+    /// Interactive browser if analyzed data
+    Browse(BrowseArgs),
 }
 
 #[derive(Parser, Debug, Default)]
@@ -27,3 +30,6 @@ pub struct AnalyzeArgs {
     #[arg(long)]
     pub show_definitions: bool,
 }
+
+#[derive(Parser, Debug, Default)]
+pub struct BrowseArgs {}

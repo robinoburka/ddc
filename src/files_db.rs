@@ -6,6 +6,7 @@ use std::path::PathBuf;
 
 use crate::file_info::{FileInfo, FileMeta};
 
+#[derive(Debug)]
 pub struct FilesDB {
     files: BTreeMap<PathBuf, FileMeta>,
 }

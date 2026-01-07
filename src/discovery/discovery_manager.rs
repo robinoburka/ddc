@@ -133,6 +133,14 @@ impl<L: PathLoader> DiscoveryManager<L> {
         results
     }
 
+    pub fn collect_and_get_db(mut self) -> (Vec<DiscoveryResult>, Option<FilesDB>) {
+        self.load_paths();
+        let results = self.discover();
+        let db = Arc::into_inner(self.db);
+        drop(self.progress_tx);
+        (results, db)
+    }
+
     #[instrument(level = "debug", skip(self))]
     fn load_paths(&mut self) {
         let paths = self

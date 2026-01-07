@@ -7,11 +7,14 @@ use home::home_dir;
 use tracing::{debug, debug_span};
 
 use crate::analyze::analyze;
+use crate::browse::browse;
 use crate::cli::{AnalyzeArgs, Args, Commands};
 use crate::generate_config::generate_config;
 use crate::logging::{LoggingLevel, setup_logging};
 
 mod analyze;
+mod browse;
+mod browse_tui;
 mod cli;
 mod config;
 mod discovery;
@@ -41,6 +44,7 @@ fn main() -> anyhow::Result<()> {
     match args.command {
         Some(Commands::GenerateConfig) => generate_config(&home_dir)?,
         Some(Commands::Analyze(cmd_args)) => analyze(cmd_args, &home_dir)?,
+        Some(Commands::Browse(cmd_args)) => browse(cmd_args, &home_dir)?,
         None => analyze(AnalyzeArgs::default(), &home_dir)?,
     };
 

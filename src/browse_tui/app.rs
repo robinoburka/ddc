@@ -1,0 +1,454 @@
+use std::io;
+use std::time::Duration;
+
+use chrono::{DateTime, Local};
+use humansize::{DECIMAL, format_size};
+use ratatui::crossterm::event::KeyEventKind;
+use ratatui::layout::{Constraint, Direction, Layout, Rect};
+use ratatui::style::{Color, Modifier, Style};
+use ratatui::text::{Line, Span};
+use ratatui::widgets::{Block, Borders, Cell, List, ListItem, ListState, Row, Table, TableState};
+use ratatui::{
+    DefaultTerminal, Frame,
+    crossterm::event::{self, Event, KeyCode},
+    widgets::Paragraph,
+};
+
+use crate::browse_tui::model::{BrowserFrame, DirItem, DirectoryFrame, ProjectsFrame};
+use crate::discovery::DiscoveryResult;
+use crate::files_db::FilesDB;
+
+#[derive(Debug, Default, PartialEq, Eq)]
+enum RunningState {
+    #[default]
+    Running,
+    Done,
+}
+
+#[derive(PartialEq)]
+enum Message {
+    MoveUp,
+    MoveDown,
+    Enter,
+    GoBack,
+    Refresh,
+    Quit,
+}
+
+#[derive(Debug)]
+pub struct App {
+    db: FilesDB,
+    running_state: RunningState,
+    frames: Vec<BrowserFrame>,
+    error_message: Option<String>,
+}
+
+impl App {
+    pub fn new(db: FilesDB, results: Vec<DiscoveryResult>) -> Self {
+        Self {
+            db,
+            running_state: RunningState::Running,
+            frames: vec![BrowserFrame::Projects(ProjectsFrame {
+                current_item: 0,
+                results,
+            })],
+            error_message: None,
+        }
+    }
+
+    pub fn run(&mut self, terminal: &mut DefaultTerminal) -> io::Result<()> {
+        while self.running_state != RunningState::Done {
+            terminal.draw(|frame| self.draw(frame))?;
+
+            let mut current_msg = self.handle_events()?;
+
+            while current_msg.is_some() {
+                current_msg = self.update(current_msg.unwrap());
+            }
+        }
+
+        Ok(())
+    }
+
+    fn handle_events(&self) -> io::Result<Option<Message>> {
+        if event::poll(Duration::from_millis(100))? {
+            match event::read()? {
+                Event::Key(key) => {
+                    if key.kind == KeyEventKind::Press {
+                        return Ok(match key.code {
+                            KeyCode::Char('q') | KeyCode::Esc => Some(Message::Quit),
+                            KeyCode::Up => Some(Message::MoveUp),
+                            KeyCode::Down => Some(Message::MoveDown),
+                            KeyCode::Right | KeyCode::Enter => Some(Message::Enter),
+                            KeyCode::Left => Some(Message::GoBack),
+                            KeyCode::Char('r') => Some(Message::Refresh),
+                            _ => None,
+                        });
+                    }
+                }
+                Event::Resize(_, _) => {
+                    return Ok(Some(Message::Refresh));
+                }
+                _ => {}
+            }
+        }
+        Ok(None)
+    }
+
+    fn update(&mut self, msg: Message) -> Option<Message> {
+        // Removes error message from previous update
+        self.error_message = None;
+
+        match msg {
+            Message::Quit => self.quit(),
+            Message::MoveUp => self.move_up(),
+            Message::MoveDown => self.move_down(),
+            Message::Enter => self.enter(),
+            Message::GoBack => self.go_back(),
+            _ => {
+                self.error_message = Some(String::from("Operation not implemented yet"));
+            }
+        };
+
+        None
+    }
+
+    fn quit(&mut self) {
+        self.running_state = RunningState::Done;
+    }
+
+    fn move_up(&mut self) {
+        match self.frames.last_mut() {
+            Some(BrowserFrame::Projects(projects)) => {
+                projects.current_item = if projects.current_item > 0 {
+                    projects.current_item - 1
+                } else {
+                    projects.current_item
+                }
+            }
+            Some(BrowserFrame::Directory(directory)) => {
+                directory.current_item = if directory.current_item > 0 {
+                    directory.current_item - 1
+                } else {
+                    directory.current_item
+                }
+            }
+            None => panic!("Missing frame. This shouldn't happen."),
+        }
+    }
+
+    fn move_down(&mut self) {
+        match self.frames.last_mut() {
+            Some(BrowserFrame::Projects(projects)) => {
+                projects.current_item = if projects.current_item < projects.results.len() {
+                    projects.current_item + 1
+                } else {
+                    projects.results.len()
+                }
+            }
+            Some(BrowserFrame::Directory(directory)) => {
+                directory.current_item = if directory.current_item < directory.directory_list.len()
+                {
+                    directory.current_item + 1
+                } else {
+                    directory.directory_list.len()
+                }
+            }
+            None => panic!("Missing frame. This shouldn't happen."),
+        }
+    }
+
+    fn enter(&mut self) {
+        match self.frames.last_mut() {
+            Some(BrowserFrame::Projects(projects)) => {
+                let requested_path = projects.results[projects.current_item].path.clone();
+                let new_frame = BrowserFrame::Directory(DirectoryFrame {
+                    current_item: 0,
+                    directory_list: self
+                        .db
+                        .iter_level(&requested_path)
+                        .map(DirItem::from)
+                        .collect(),
+                    cwd: requested_path,
+                });
+                self.frames.push(new_frame);
+            }
+            Some(BrowserFrame::Directory(directory)) => {
+                let Some(requested_item) = directory.directory_list.get(directory.current_item)
+                else {
+                    self.error_message = Some(String::from("No item selected"));
+                    return;
+                };
+                if requested_item.is_directory {
+                    let directory_list: Vec<_> = self
+                        .db
+                        .iter_level(&requested_item.path)
+                        .map(DirItem::from)
+                        .collect();
+                    if directory_list.is_empty() {
+                        self.error_message = Some(String::from("Directory is empty"));
+                    } else {
+                        let new_frame = BrowserFrame::Directory(DirectoryFrame {
+                            current_item: 0,
+                            directory_list,
+                            cwd: requested_item.path.clone(),
+                        });
+                        self.frames.push(new_frame);
+                    }
+                } else {
+                    self.error_message = Some(String::from("Item is not a directory"));
+                }
+            }
+            None => panic!("Missing frame. This shouldn't happen."),
+        }
+    }
+
+    fn go_back(&mut self) {
+        if self.frames.len() > 1 {
+            self.frames.pop();
+        }
+    }
+
+    fn draw(&self, frame: &mut Frame) {
+        let chunks = self.create_layout(frame.area());
+        self.render_header(frame, chunks[0]);
+        match self.frames.last() {
+            Some(BrowserFrame::Projects(projects_frame)) => {
+                self.render_projects(frame, chunks[1], projects_frame)
+            }
+            Some(BrowserFrame::Directory(directory_frame)) => {
+                self.render_directory(frame, chunks[1], directory_frame)
+            }
+            None => panic!("Missing frame. This shouldn't happen."),
+        }
+        self.render_footer(frame, chunks[2]);
+    }
+
+    fn create_layout(&self, area: Rect) -> Vec<Rect> {
+        Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(3),
+                Constraint::Min(0),
+                Constraint::Length(3),
+            ])
+            .split(area)
+            .to_vec()
+    }
+
+    fn render_header(&self, frame: &mut Frame, area: Rect) {
+        let header_text = match self.frames.last() {
+            Some(BrowserFrame::Projects(projects)) => {
+                if projects.results.is_empty() {
+                    String::from("No projects found.")
+                } else {
+                    format!(" Discovered Projects ({}) ", projects.results.len())
+                }
+            }
+            Some(BrowserFrame::Directory(directory)) => {
+                format!(" Browsing: {} ", directory.cwd.display())
+            }
+            None => panic!("Missing frame. This shouldn't happen."),
+        };
+
+        let header = Paragraph::new(header_text)
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title(" DDC Project Browser ")
+                    .style(Style::default().fg(Color::Cyan)),
+            )
+            .style(Style::default().fg(Color::White));
+
+        frame.render_widget(header, area);
+    }
+
+    fn render_footer(&self, frame: &mut Frame, area: Rect) {
+        let footer = if let Some(message) = &self.error_message {
+            let msg = format!(" {}", message);
+            Paragraph::new(msg)
+                .block(
+                    Block::default()
+                        .borders(Borders::ALL)
+                        .title(" ERROR ")
+                        .style(
+                            Style::default()
+                                .fg(Color::LightRed)
+                                .add_modifier(Modifier::BOLD),
+                        ),
+                )
+                .style(Style::default().fg(Color::White))
+        } else {
+            let line = vec![Line::from(vec![
+                Span::styled(
+                    "↑/↓",
+                    Style::default()
+                        .fg(Color::Yellow)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::raw(" Navigate  "),
+                Span::styled(
+                    "→",
+                    Style::default()
+                        .fg(Color::Yellow)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::raw(" Enter Project  "),
+                Span::styled(
+                    "r",
+                    Style::default()
+                        .fg(Color::Yellow)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::raw(" Refresh  "),
+                Span::styled(
+                    "q/Esc",
+                    Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+                ),
+                Span::raw(" Quit"),
+            ])];
+
+            Paragraph::new(line)
+                .block(
+                    Block::default()
+                        .borders(Borders::ALL)
+                        .title(" Controls ")
+                        .style(Style::default().fg(Color::Green)),
+                )
+                .style(Style::default().fg(Color::White))
+        };
+
+        frame.render_widget(footer, area);
+    }
+
+    fn render_projects(&self, frame: &mut Frame, area: Rect, directory_frame: &ProjectsFrame) {
+        let rows: Vec<Row> = directory_frame
+            .results
+            .iter()
+            .map(|result| self.create_project_row(result))
+            .collect();
+
+        let table = Table::new(
+            rows,
+            [
+                Constraint::Length(3),
+                Constraint::Percentage(60),
+                Constraint::Length(10),
+                Constraint::Length(20),
+            ],
+        )
+        .header(
+            Row::new(["", "Project", "Size", "Last update"]).style(
+                Style::default()
+                    .fg(Color::Blue)
+                    .add_modifier(Modifier::BOLD),
+            ),
+        )
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(" Projects ")
+                .style(Style::default().fg(Color::LightYellow)),
+        )
+        .row_highlight_style(
+            Style::default()
+                .bg(Color::Blue)
+                .fg(Color::White)
+                .add_modifier(Modifier::BOLD),
+        )
+        .highlight_symbol("► ");
+
+        let mut table_state = TableState::default();
+        table_state.select(Some(directory_frame.current_item));
+
+        frame.render_stateful_widget(table, area, &mut table_state);
+    }
+
+    fn create_project_row<'a>(&self, result: &'a DiscoveryResult) -> Row<'a> {
+        let icon = format!(
+            "{} ",
+            if let Some(lang) = result.lang {
+                format!("{} ", lang)
+            } else {
+                String::from(" ")
+            }
+        );
+
+        let size = format_size(result.size, DECIMAL);
+
+        let last_update = result
+            .last_update
+            .map(|t| {
+                DateTime::<Local>::from(t)
+                    .format("%Y-%m-%d %H:%M:%S")
+                    .to_string()
+            })
+            .unwrap_or_default();
+
+        Row::new(vec![
+            Cell::from(icon),
+            Cell::from(result.path.display().to_string()),
+            Cell::from(size).style(Style::default().fg(Color::Red)),
+            Cell::from(last_update),
+        ])
+        .style(Style::default().fg(Color::White))
+    }
+
+    fn render_directory(&self, frame: &mut Frame, area: Rect, directory_frame: &DirectoryFrame) {
+        let list_items: Vec<ListItem> = directory_frame
+            .directory_list
+            .iter()
+            .map(|path| self.create_directory_list_item(path))
+            .collect();
+
+        // Create the list widget
+        let list = List::new(list_items)
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title(" Directory List ")
+                    .style(Style::default().fg(Color::LightYellow)),
+            )
+            .highlight_style(
+                Style::default()
+                    .bg(Color::Blue)
+                    .fg(Color::White)
+                    .add_modifier(Modifier::BOLD),
+            )
+            .highlight_symbol("► ");
+
+        let mut list_state = ListState::default();
+        list_state.select(Some(directory_frame.current_item));
+
+        frame.render_stateful_widget(list, area, &mut list_state);
+    }
+
+    fn create_directory_list_item<'a>(&self, item: &'a DirItem) -> ListItem<'a> {
+        let (icon, name_style, size_text) = if item.is_directory {
+            (
+                "📁",
+                Style::default().fg(Color::Cyan),
+                "".to_string(), // Directories don't show size
+            )
+        } else {
+            let size_display = item
+                .size
+                .map(|size| format_size(size, DECIMAL))
+                .unwrap_or_else(|| "?".to_string());
+
+            (
+                "📄",
+                Style::default().fg(Color::White),
+                format!(" ({})", size_display),
+            )
+        };
+
+        let content = Line::from(vec![
+            Span::raw(format!("{} ", icon)),
+            Span::styled(&item.name, name_style),
+            Span::styled(size_text, Style::default().fg(Color::Gray)),
+        ]);
+
+        ListItem::new(content)
+    }
+}
