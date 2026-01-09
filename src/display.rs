@@ -46,7 +46,7 @@ pub fn print_results<W: Write>(out: &mut W, discovery_results: Vec<DiscoveryResu
     table_static_build.with(Modify::new(Rows::last()).with(Color::BOLD));
     table_static_build.with(Modify::new(Rows::last()).with(Alignment::right()));
     table_static_build.with(Modify::new(Cell::new(0, 0)).with(Color::BOLD));
-    table_static_build.with(Style::modern_rounded());
+    table_static_build.with(Style::empty());
     static_data.iter().enumerate().for_each(|(i, d)| {
         table_static_build
             .with(Modify::new(Cell::new(i + 2, 3)).with(time_color_coded(&now, &d.record.time)));
@@ -62,7 +62,7 @@ pub fn print_results<W: Write>(out: &mut W, discovery_results: Vec<DiscoveryResu
     table_discovery_build.with(Modify::new(Rows::last()).with(Color::BOLD));
     table_discovery_build.with(Modify::new(Rows::last()).with(Alignment::right()));
     table_discovery_build.with(Modify::new(Cell::new(0, 0)).with(Color::BOLD));
-    table_discovery_build.with(Style::modern_rounded());
+    table_discovery_build.with(Style::empty());
     discovery_data.iter().enumerate().for_each(|(i, d)| {
         table_discovery_build
             .with(Modify::new(Cell::new(i + 2, 2)).with(time_color_coded(&now, &d.time)));
@@ -74,7 +74,7 @@ pub fn print_results<W: Write>(out: &mut W, discovery_results: Vec<DiscoveryResu
 
 #[derive(Tabled)]
 struct Record {
-    #[tabled(rename = "Language", display("tabled::derive::display::option", ""))]
+    #[tabled(rename = "Lang", display("tabled::derive::display::option", ""))]
     lang: Option<String>,
     #[tabled(rename = "Path")]
     path: String,
