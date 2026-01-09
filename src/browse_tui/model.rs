@@ -3,6 +3,12 @@ use std::path::PathBuf;
 use crate::discovery::DiscoveryResult;
 use crate::file_info::FileInfo;
 
+#[derive(Debug, PartialEq)]
+pub(super) enum Tab {
+    Projects,
+    Tools,
+}
+
 #[derive(Debug)]
 pub(super) enum BrowserFrame {
     Projects(ProjectsFrame),
@@ -11,6 +17,29 @@ pub(super) enum BrowserFrame {
 
 #[derive(Debug)]
 pub(super) struct ProjectsFrame {
+    pub(super) current_view: Tab,
+    pub(super) projects: ProjectsFrameView,
+    pub(super) tools: ProjectsFrameView,
+}
+
+impl ProjectsFrame {
+    pub(super) fn get_mut_view(&mut self) -> &mut ProjectsFrameView {
+        match self.current_view {
+            Tab::Projects => &mut self.projects,
+            Tab::Tools => &mut self.tools,
+        }
+    }
+
+    pub(super) fn get_view(&self) -> &ProjectsFrameView {
+        match self.current_view {
+            Tab::Projects => &self.projects,
+            Tab::Tools => &self.tools,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub(super) struct ProjectsFrameView {
     pub(super) current_item: usize,
     pub(super) results: Vec<DiscoveryResult>,
 }

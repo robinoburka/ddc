@@ -1,5 +1,5 @@
 use std::io;
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 use chrono::{DateTime, Local};
 use humansize::{DECIMAL, format_size};
@@ -7,15 +7,20 @@ use ratatui::crossterm::event::KeyEventKind;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, Cell, List, ListItem, ListState, Row, Table, TableState};
+use ratatui::widgets::{
+    Block, Borders, Cell, List, ListItem, ListState, Row, Table, TableState, Tabs,
+};
 use ratatui::{
     DefaultTerminal, Frame,
     crossterm::event::{self, Event, KeyCode},
     widgets::Paragraph,
 };
 
-use crate::browse_tui::model::{BrowserFrame, DirItem, DirectoryFrame, ProjectsFrame};
-use crate::discovery::DiscoveryResult;
+use crate::browse_tui::model::{
+    BrowserFrame, DirItem, DirectoryFrame, ProjectsFrame, ProjectsFrameView, Tab,
+};
+use crate::discovery::{DiscoveryResult, ResultType};
+use crate::display_tools::{ColorCode, get_size_color_code, get_time_color_code};
 use crate::files_db::FilesDB;
 
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -33,6 +38,7 @@ enum Message {
     GoBack,
     Refresh,
     Quit,
+    SelectTab(Tab),
 }
 
 #[derive(Debug)]
@@ -41,18 +47,40 @@ pub struct App {
     running_state: RunningState,
     frames: Vec<BrowserFrame>,
     error_message: Option<String>,
+    now: SystemTime,
 }
 
 impl App {
     pub fn new(db: FilesDB, results: Vec<DiscoveryResult>) -> Self {
+        let mut discovery_data = vec![];
+        let mut static_data = vec![];
+
+        for result in results {
+            if result.size == 0 {
+                continue;
+            }
+            match result.result_type {
+                ResultType::Discovery => discovery_data.push(result),
+                ResultType::Static(_) => static_data.push(result),
+            }
+        }
+
         Self {
             db,
             running_state: RunningState::Running,
             frames: vec![BrowserFrame::Projects(ProjectsFrame {
-                current_item: 0,
-                results,
+                current_view: Tab::Projects,
+                projects: ProjectsFrameView {
+                    current_item: 0,
+                    results: discovery_data,
+                },
+                tools: ProjectsFrameView {
+                    current_item: 0,
+                    results: static_data,
+                },
             })],
             error_message: None,
+            now: SystemTime::now(),
         }
     }
 
@@ -82,6 +110,8 @@ impl App {
                             KeyCode::Right | KeyCode::Enter => Some(Message::Enter),
                             KeyCode::Left => Some(Message::GoBack),
                             KeyCode::Char('r') => Some(Message::Refresh),
+                            KeyCode::Char('1') => Some(Message::SelectTab(Tab::Projects)),
+                            KeyCode::Char('2') => Some(Message::SelectTab(Tab::Tools)),
                             _ => None,
                         });
                     }
@@ -105,6 +135,7 @@ impl App {
             Message::MoveDown => self.move_down(),
             Message::Enter => self.enter(),
             Message::GoBack => self.go_back(),
+            Message::SelectTab(tab) => self.select_tab(tab),
             _ => {
                 self.error_message = Some(String::from("Operation not implemented yet"));
             }
@@ -120,10 +151,11 @@ impl App {
     fn move_up(&mut self) {
         match self.frames.last_mut() {
             Some(BrowserFrame::Projects(projects)) => {
-                projects.current_item = if projects.current_item > 0 {
-                    projects.current_item - 1
+                let view = projects.get_mut_view();
+                view.current_item = if view.current_item > 0 {
+                    view.current_item - 1
                 } else {
-                    projects.current_item
+                    view.current_item
                 }
             }
             Some(BrowserFrame::Directory(directory)) => {
@@ -140,10 +172,11 @@ impl App {
     fn move_down(&mut self) {
         match self.frames.last_mut() {
             Some(BrowserFrame::Projects(projects)) => {
-                projects.current_item = if projects.current_item < projects.results.len() {
-                    projects.current_item + 1
+                let view = projects.get_mut_view();
+                view.current_item = if view.current_item < view.results.len() {
+                    view.current_item + 1
                 } else {
-                    projects.results.len()
+                    view.results.len()
                 }
             }
             Some(BrowserFrame::Directory(directory)) => {
@@ -161,7 +194,8 @@ impl App {
     fn enter(&mut self) {
         match self.frames.last_mut() {
             Some(BrowserFrame::Projects(projects)) => {
-                let requested_path = projects.results[projects.current_item].path.clone();
+                let view = projects.get_mut_view();
+                let requested_path = view.results[view.current_item].path.clone();
                 let new_frame = BrowserFrame::Directory(DirectoryFrame {
                     current_item: 0,
                     directory_list: self
@@ -209,6 +243,17 @@ impl App {
         }
     }
 
+    fn select_tab(&mut self, tab: Tab) {
+        self.frames.truncate(1);
+        match self.frames.last_mut() {
+            Some(BrowserFrame::Projects(projects)) => projects.current_view = tab,
+            Some(BrowserFrame::Directory(_)) => {
+                panic!("Wrong frame present on the first position. This shouldn't happen.")
+            }
+            None => panic!("Missing frame. This shouldn't happen."),
+        }
+    }
+
     fn draw(&self, frame: &mut Frame) {
         let chunks = self.create_layout(frame.area());
         self.render_header(frame, chunks[0]);
@@ -237,30 +282,45 @@ impl App {
     }
 
     fn render_header(&self, frame: &mut Frame, area: Rect) {
-        let header_text = match self.frames.last() {
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .title(" DDC Project Browser ")
+            .title_style(Style::default().fg(Color::Cyan))
+            .border_style(Style::default().fg(Color::Cyan));
+
+        match self.frames.last() {
             Some(BrowserFrame::Projects(projects)) => {
-                if projects.results.is_empty() {
-                    String::from("No projects found.")
-                } else {
-                    format!(" Discovered Projects ({}) ", projects.results.len())
-                }
+                let titles = vec![
+                    format!("Discovered Projects ({})", projects.projects.results.len()),
+                    format!("Tooling results ({})", projects.tools.results.len()),
+                ];
+                let selected_tab_index = match projects.current_view {
+                    Tab::Projects => 0,
+                    Tab::Tools => 1,
+                };
+                let tabs = Tabs::new(titles)
+                    .highlight_style(
+                        Style::default()
+                            .fg(Color::White)
+                            .add_modifier(Modifier::BOLD),
+                    )
+                    .select(selected_tab_index)
+                    .padding(" ", " ")
+                    .style(Style::default().fg(Color::DarkGray))
+                    .divider("|")
+                    .block(block);
+                frame.render_widget(tabs, area);
             }
             Some(BrowserFrame::Directory(directory)) => {
-                format!(" Browsing: {} ", directory.cwd.display())
+                let text = format!(" Browsing: {} ", directory.cwd.display());
+                let header = Paragraph::new(text)
+                    .block(block)
+                    .style(Style::default().fg(Color::White));
+
+                frame.render_widget(header, area);
             }
             None => panic!("Missing frame. This shouldn't happen."),
         };
-
-        let header = Paragraph::new(header_text)
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .title(" DDC Project Browser ")
-                    .style(Style::default().fg(Color::Cyan)),
-            )
-            .style(Style::default().fg(Color::White));
-
-        frame.render_widget(header, area);
     }
 
     fn render_footer(&self, frame: &mut Frame, area: Rect) {
@@ -321,12 +381,18 @@ impl App {
         frame.render_widget(footer, area);
     }
 
-    fn render_projects(&self, frame: &mut Frame, area: Rect, directory_frame: &ProjectsFrame) {
-        let rows: Vec<Row> = directory_frame
+    fn render_projects(&self, frame: &mut Frame, area: Rect, discovery_frame: &ProjectsFrame) {
+        let view = discovery_frame.get_view();
+        let rows: Vec<Row> = view
             .results
             .iter()
             .map(|result| self.create_project_row(result))
             .collect();
+
+        let (title, column_name) = match discovery_frame.current_view {
+            Tab::Projects => (" Projects ", "Project"),
+            Tab::Tools => (" Tools ", "Tool"),
+        };
 
         let table = Table::new(
             rows,
@@ -338,7 +404,7 @@ impl App {
             ],
         )
         .header(
-            Row::new(["", "Project", "Size", "Last update"]).style(
+            Row::new(["", column_name, "Size", "Last update"]).style(
                 Style::default()
                     .fg(Color::Blue)
                     .add_modifier(Modifier::BOLD),
@@ -347,7 +413,7 @@ impl App {
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .title(" Projects ")
+                .title(title)
                 .style(Style::default().fg(Color::LightYellow)),
         )
         .row_highlight_style(
@@ -359,7 +425,7 @@ impl App {
         .highlight_symbol("► ");
 
         let mut table_state = TableState::default();
-        table_state.select(Some(directory_frame.current_item));
+        table_state.select(Some(view.current_item));
 
         frame.render_stateful_widget(table, area, &mut table_state);
     }
@@ -375,6 +441,12 @@ impl App {
         );
 
         let size = format_size(result.size, DECIMAL);
+        let size_color_code = match get_size_color_code(result.size) {
+            ColorCode::None => Color::White,
+            ColorCode::Low => Color::Green,
+            ColorCode::Medium => Color::Yellow,
+            ColorCode::High => Color::Red,
+        };
 
         let last_update = result
             .last_update
@@ -384,12 +456,29 @@ impl App {
                     .to_string()
             })
             .unwrap_or_default();
+        let last_update_color_code = match get_time_color_code(&self.now, &result.last_update) {
+            ColorCode::None => Color::White,
+            ColorCode::Low => Color::Green,
+            ColorCode::Medium => Color::Yellow,
+            ColorCode::High => Color::Red,
+        };
+
+        let path_line = match result.result_type {
+            ResultType::Discovery => Line::from(vec![Span::raw(result.path.display().to_string())]),
+            ResultType::Static(ref description) => Line::from(vec![
+                Span::raw(description),
+                Span::styled(
+                    format!(" ({})", result.path.display()),
+                    Style::default().fg(Color::DarkGray),
+                ),
+            ]),
+        };
 
         Row::new(vec![
             Cell::from(icon),
-            Cell::from(result.path.display().to_string()),
-            Cell::from(size).style(Style::default().fg(Color::Red)),
-            Cell::from(last_update),
+            Cell::from(path_line),
+            Cell::from(size).style(Style::default().fg(size_color_code)),
+            Cell::from(last_update).style(Style::default().fg(last_update_color_code)),
         ])
         .style(Style::default().fg(Color::White))
     }
