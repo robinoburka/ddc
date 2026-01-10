@@ -16,6 +16,7 @@ mod cli;
 mod config;
 mod discovery;
 mod display;
+mod display_tools;
 mod file_info;
 mod files_db;
 mod generate_config;
