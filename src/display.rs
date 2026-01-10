@@ -11,6 +11,7 @@ use tabled::{Table, Tabled};
 use tracing::instrument;
 
 use crate::discovery::{DiscoveryResult, ProgressEvent, ResultType};
+use crate::display_tools::{ColorCode, get_size_color_code, get_time_color_code};
 
 #[instrument(level = "debug", skip(out, discovery_results))]
 pub fn print_results<W: Write>(out: &mut W, discovery_results: Vec<DiscoveryResult>) {
@@ -114,30 +115,20 @@ impl From<DiscoveryResult> for Record {
 }
 
 fn size_color_coded(size: u64) -> Color {
-    if size < 1000 * 1000 * 90 {
-        Color::FG_GREEN
-    } else if size < 1000 * 1000 * 900 {
-        Color::FG_YELLOW
-    } else {
-        Color::FG_RED
+    match get_size_color_code(size) {
+        ColorCode::None => Color::FG_WHITE,
+        ColorCode::Low => Color::FG_GREEN,
+        ColorCode::Medium => Color::FG_YELLOW,
+        ColorCode::High => Color::FG_RED,
     }
 }
 
 fn time_color_coded(now: &SystemTime, time: &Option<SystemTime>) -> Color {
-    match time {
-        None => Color::FG_WHITE, // Wouldn't be displayed anyway
-        Some(system_time) => match now.duration_since(*system_time) {
-            Err(_) => Color::FG_WHITE, // Future time; shouldn't happen
-            Ok(duration) => {
-                if duration < Duration::from_days(14) {
-                    Color::FG_GREEN
-                } else if duration < Duration::from_days(60) {
-                    Color::FG_YELLOW
-                } else {
-                    Color::FG_RED
-                }
-            }
-        },
+    match get_time_color_code(now, time) {
+        ColorCode::None => Color::FG_WHITE,
+        ColorCode::Low => Color::FG_GREEN,
+        ColorCode::Medium => Color::FG_YELLOW,
+        ColorCode::High => Color::FG_RED,
     }
 }
 
