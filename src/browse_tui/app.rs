@@ -39,6 +39,7 @@ enum Message {
     Refresh,
     Quit,
     SelectTab(Tab),
+    EnterParent,
 }
 
 #[derive(Debug)]
@@ -112,6 +113,7 @@ impl App {
                             KeyCode::Char('r') => Some(Message::Refresh),
                             KeyCode::Char('1') => Some(Message::SelectTab(Tab::Projects)),
                             KeyCode::Char('2') => Some(Message::SelectTab(Tab::Tools)),
+                            KeyCode::Char('p') => Some(Message::EnterParent),
                             _ => None,
                         });
                     }
@@ -136,6 +138,7 @@ impl App {
             Message::Enter => self.enter(),
             Message::GoBack => self.go_back(),
             Message::SelectTab(tab) => self.select_tab(tab),
+            Message::EnterParent => self.enter_parent(),
             _ => {
                 self.error_message = Some(String::from("Operation not implemented yet"));
             }
@@ -232,6 +235,36 @@ impl App {
                 } else {
                     self.error_message = Some(String::from("Item is not a directory"));
                 }
+            }
+            None => panic!("Missing frame. This shouldn't happen."),
+        }
+    }
+
+    fn enter_parent(&mut self) {
+        match self.frames.last_mut() {
+            Some(BrowserFrame::Projects(projects)) => {
+                let view = projects.get_mut_view();
+                let initial_path = &view.results[view.current_item].path;
+                if let Some(parent_path) = initial_path.parent() {
+                    let requested_path = parent_path.to_path_buf();
+                    let new_frame = BrowserFrame::Directory(DirectoryFrame {
+                        current_item: 0,
+                        directory_list: self
+                            .db
+                            .iter_level(&requested_path)
+                            .map(DirItem::from)
+                            .collect(),
+                        cwd: requested_path,
+                    });
+                    self.frames.push(new_frame);
+                } else {
+                    self.error_message = Some(String::from("Unable to detect parent directory."));
+                }
+            }
+            Some(BrowserFrame::Directory(_)) => {
+                self.error_message = Some(String::from(
+                    "Parent traversal is implemented only for projects and tools views.",
+                ));
             }
             None => panic!("Missing frame. This shouldn't happen."),
         }
