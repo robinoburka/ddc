@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use crate::discovery::DiscoveryResult;
 use crate::file_info::FileInfo;
+use crate::files_db::FilesDB;
 
 #[derive(Debug, PartialEq)]
 pub(super) enum Tab {
@@ -59,18 +60,26 @@ pub(super) struct DirItem {
     pub(super) size: Option<u64>,
 }
 
-impl From<FileInfo<'_>> for DirItem {
-    fn from(value: FileInfo) -> Self {
+impl DirItem {
+    pub(super) fn from_file_info(file_info: &FileInfo, db: &FilesDB) -> Self {
         Self {
-            name: value
+            name: file_info
                 .path
                 .file_name()
                 .and_then(|n| n.to_str())
                 .unwrap_or("?")
                 .to_string(),
-            path: value.path.clone(),
-            is_directory: value.is_dir,
-            size: value.size,
+            path: file_info.path.clone(),
+            is_directory: file_info.is_dir,
+            size: if file_info.is_dir {
+                Some(
+                    db.iter_dir(file_info.path)
+                        .filter_map(|item| item.size)
+                        .sum(),
+                )
+            } else {
+                file_info.size
+            },
         }
     }
 }

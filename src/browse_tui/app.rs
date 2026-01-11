@@ -204,7 +204,7 @@ impl App {
                     directory_list: self
                         .db
                         .iter_level(&requested_path)
-                        .map(DirItem::from)
+                        .map(|fi| DirItem::from_file_info(&fi, &self.db))
                         .collect(),
                     cwd: requested_path,
                 });
@@ -220,7 +220,7 @@ impl App {
                     let directory_list: Vec<_> = self
                         .db
                         .iter_level(&requested_item.path)
-                        .map(DirItem::from)
+                        .map(|fi| DirItem::from_file_info(&fi, &self.db))
                         .collect();
                     if directory_list.is_empty() {
                         self.error_message = Some(String::from("Directory is empty"));
@@ -252,7 +252,7 @@ impl App {
                         directory_list: self
                             .db
                             .iter_level(&requested_path)
-                            .map(DirItem::from)
+                            .map(|fi| DirItem::from_file_info(&fi, &self.db))
                             .collect(),
                         cwd: requested_path,
                     });
@@ -546,29 +546,24 @@ impl App {
     }
 
     fn create_directory_list_item<'a>(&self, item: &'a DirItem) -> ListItem<'a> {
-        let (icon, name_style, size_text) = if item.is_directory {
-            (
-                "📁",
-                Style::default().fg(Color::Cyan),
-                "".to_string(), // Directories don't show size
-            )
+        let (icon, name_style) = if item.is_directory {
+            ("📁", Style::default().fg(Color::Cyan))
         } else {
-            let size_display = item
-                .size
-                .map(|size| format_size(size, DECIMAL))
-                .unwrap_or_else(|| "?".to_string());
-
-            (
-                "📄",
-                Style::default().fg(Color::White),
-                format!(" ({})", size_display),
-            )
+            ("📄", Style::default().fg(Color::White))
         };
+
+        let size_text = item
+            .size
+            .map(|size| format_size(size, DECIMAL))
+            .unwrap_or_else(|| "?".to_string());
 
         let content = Line::from(vec![
             Span::raw(format!("{} ", icon)),
             Span::styled(&item.name, name_style),
-            Span::styled(size_text, Style::default().fg(Color::Gray)),
+            Span::styled(
+                format!(" ({})", size_text),
+                Style::default().fg(Color::Gray),
+            ),
         ]);
 
         ListItem::new(content)
