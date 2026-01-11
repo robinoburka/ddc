@@ -10,6 +10,13 @@ pub struct DiscoveryResult {
     pub lang: Option<Language>,
     pub size: u64,
     pub last_update: Option<SystemTime>,
+    pub parent: Option<ParentInfo>,
+}
+
+#[derive(Clone, Debug)]
+pub struct ParentInfo {
+    pub path: PathBuf,
+    pub size: u64,
 }
 
 #[derive(Clone, Debug, PartialEq)]

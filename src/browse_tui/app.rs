@@ -244,17 +244,15 @@ impl App {
         match self.frames.last_mut() {
             Some(BrowserFrame::Projects(projects)) => {
                 let view = projects.get_mut_view();
-                let initial_path = &view.results[view.current_item].path;
-                if let Some(parent_path) = initial_path.parent() {
-                    let requested_path = parent_path.to_path_buf();
+                if let Some(parent_info) = &view.results[view.current_item].parent {
                     let new_frame = BrowserFrame::Directory(DirectoryFrame {
                         current_item: 0,
                         directory_list: self
                             .db
-                            .iter_level(&requested_path)
+                            .iter_level(&parent_info.path)
                             .map(|fi| DirItem::from_file_info(&fi, &self.db))
                             .collect(),
-                        cwd: requested_path,
+                        cwd: parent_info.path.clone(),
                     });
                     self.frames.push(new_frame);
                 } else {
@@ -434,10 +432,11 @@ impl App {
                 Constraint::Percentage(60),
                 Constraint::Length(10),
                 Constraint::Length(20),
+                Constraint::Length(11),
             ],
         )
         .header(
-            Row::new(["", column_name, "Size", "Last update"]).style(
+            Row::new(["", column_name, "Size", "Last update", "Parent size"]).style(
                 Style::default()
                     .fg(Color::Blue)
                     .add_modifier(Modifier::BOLD),
@@ -480,6 +479,11 @@ impl App {
             ColorCode::Medium => Color::Yellow,
             ColorCode::High => Color::Red,
         };
+        let parent_size = result
+            .parent
+            .as_ref()
+            .map(|p| format_size(p.size, DECIMAL))
+            .unwrap_or_default();
 
         let last_update = result
             .last_update
@@ -512,6 +516,7 @@ impl App {
             Cell::from(path_line),
             Cell::from(size).style(Style::default().fg(size_color_code)),
             Cell::from(last_update).style(Style::default().fg(last_update_color_code)),
+            Cell::from(parent_size).style(Style::default().fg(Color::DarkGray)),
         ])
         .style(Style::default().fg(Color::White))
     }
