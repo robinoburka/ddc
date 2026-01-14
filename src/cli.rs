@@ -21,11 +21,13 @@ pub enum Commands {
     /// Show default paths that are explored
     ShowDefinitions,
     /// Analyzes data (default command)
-    Analyze(AnalyzeArgs),
+    Analyze(AnalyserSharedArgs),
+    /// Interactive browser of the analyzed data
+    Browse(AnalyserSharedArgs),
 }
 
 #[derive(Parser, Debug, Default)]
-pub struct AnalyzeArgs {
+pub struct AnalyserSharedArgs {
     /// Do not display the progress bar
     #[arg(short = 'p', long)]
     pub no_progress: bool,
@@ -62,14 +64,14 @@ mod tests {
         // Enabled by default
         let args = Args {
             verbosity: 0,
-            command: Some(Commands::Analyze(AnalyzeArgs { no_progress: false })),
+            command: Some(Commands::Analyze(AnalyserSharedArgs { no_progress: false })),
         };
         assert_eq!(UiConfig::from(&args).show_progress, true);
 
         // Disabled
         let args = Args {
             verbosity: 0,
-            command: Some(Commands::Analyze(AnalyzeArgs { no_progress: true })),
+            command: Some(Commands::Analyze(AnalyserSharedArgs { no_progress: true })),
         };
         assert_eq!(UiConfig::from(&args).show_progress, false);
     }
@@ -78,7 +80,7 @@ mod tests {
     fn test_ui_config_hides_progress_on_high_log_level() {
         let args = Args {
             verbosity: 2,
-            command: Some(Commands::Analyze(AnalyzeArgs { no_progress: false })),
+            command: Some(Commands::Analyze(AnalyserSharedArgs { no_progress: false })),
         };
         assert_eq!(UiConfig::from(&args).show_progress, false);
     }

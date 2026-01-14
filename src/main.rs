@@ -7,11 +7,14 @@ use home::home_dir;
 use tracing::{debug, debug_span};
 
 use crate::analyze::{analyze, show_default_definitions};
+use crate::browse::browse;
 use crate::cli::{Args, Commands, UiConfig};
 use crate::generate_config::generate_config;
 use crate::logging::{LoggingLevel, setup_logging};
 
 mod analyze;
+mod browse;
+mod browse_tui;
 mod cli;
 mod config;
 mod discovery;
@@ -43,6 +46,7 @@ fn main() -> anyhow::Result<()> {
         Some(Commands::GenerateConfig) => generate_config(&home_dir)?,
         Some(Commands::ShowDefinitions) => show_default_definitions(&home_dir),
         Some(Commands::Analyze(_)) => analyze(&ui_config, &home_dir)?,
+        Some(Commands::Browse(_)) => browse(&ui_config, &home_dir)?,
         None => analyze(&ui_config, &home_dir)?,
     };
 
