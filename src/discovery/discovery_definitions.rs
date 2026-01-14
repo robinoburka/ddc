@@ -3,16 +3,23 @@ use std::time::SystemTime;
 
 use crate::types::Language;
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct DiscoveryResult {
     pub result_type: ResultType,
     pub path: PathBuf,
     pub lang: Option<Language>,
     pub size: u64,
     pub last_update: Option<SystemTime>,
+    pub parent: Option<ParentInfo>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug)]
+pub struct ParentInfo {
+    pub path: PathBuf,
+    pub size: u64,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub enum ResultType {
     Discovery,
     Static(String),

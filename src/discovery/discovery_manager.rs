@@ -9,7 +9,7 @@ use tracing::{debug_span, instrument, warn};
 use crate::config::Config;
 use crate::discovery::default_definitions::default_discovery_definitions;
 use crate::discovery::detectors::{JsNpmDetector, PythonVenvDetector, RustBuildDirDetector};
-use crate::discovery::discovery_definitions::ResultType;
+use crate::discovery::discovery_definitions::{ParentInfo, ResultType};
 use crate::discovery::progress::{ProgressEvent, ProgressReporter};
 use crate::discovery::{DiscoveryDefinition, DiscoveryResult};
 use crate::files_db::FilesDB;
@@ -180,6 +180,7 @@ impl<L: PathLoader> DiscoveryManager<L> {
             let _guard = debug_span!("static_thread").entered();
             for pd in definitions.iter() {
                 if !pd.discovery {
+                    let parent = pd.path.parent().map(|p| p.to_path_buf());
                     let size = db.iter_dir(&pd.path).filter_map(|fi| fi.size).sum();
                     let last_update = db.iter_dir(&pd.path).filter_map(|fi| fi.touched).max();
                     let r = DiscoveryResult {
@@ -188,6 +189,10 @@ impl<L: PathLoader> DiscoveryManager<L> {
                         path: pd.path.clone(),
                         last_update,
                         size,
+                        parent: parent.map(|parent_path| ParentInfo {
+                            size: db.iter_dir(&parent_path).filter_map(|fi| fi.size).sum(),
+                            path: parent_path,
+                        }),
                     };
                     tx.send(r).unwrap();
                 }
@@ -241,12 +246,17 @@ fn discovery_thread<D, R>(
             detected_paths.iter().for_each(|p| {
                 let size = db.iter_dir(p).filter_map(|fi| fi.size).sum();
                 let last_update = db.iter_dir(p).filter_map(|fi| fi.touched).max();
+                let parent = p.parent().map(|p| p.to_path_buf());
                 let r = DiscoveryResult {
                     result_type: ResultType::Discovery,
                     lang: Some(D::LANG),
                     path: (*p).clone(),
                     last_update,
                     size,
+                    parent: parent.map(|parent_path| ParentInfo {
+                        size: db.iter_dir(&parent_path).filter_map(|fi| fi.size).sum(),
+                        path: parent_path,
+                    }),
                 };
                 tx.send(r).unwrap();
             });
