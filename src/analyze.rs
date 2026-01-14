@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use owo_colors::OwoColorize;
 use tracing::{debug, error};
 
-use crate::cli::{AnalyzeArgs, COMMAND_NAME};
+use crate::cli::{COMMAND_NAME, UiConfig};
 use crate::config::{Config, get_config_file_candidates};
 use crate::discovery::{DiscoveryManager, default_discovery_definitions};
 use crate::display::{display_progress_bar, print_results};
@@ -31,13 +31,13 @@ pub enum AnalyzeError {
     NoResultsFound,
 }
 
-pub fn analyze(args: AnalyzeArgs, home_dir: &Path) -> Result<(), AnalyzeError> {
-    analyze_inner(&mut io::stdout(), args, home_dir)
+pub fn analyze(ui_config: &UiConfig, home_dir: &Path) -> Result<(), AnalyzeError> {
+    analyze_inner(&mut io::stdout(), ui_config, home_dir)
 }
 
 fn analyze_inner<W: Write>(
     out: &mut W,
-    _args: AnalyzeArgs,
+    ui_config: &UiConfig,
     home_dir: &Path,
 ) -> Result<(), AnalyzeError> {
     let candidates = get_config_file_candidates(home_dir);
@@ -53,10 +53,12 @@ fn analyze_inner<W: Write>(
     let discovery_manager =
         DiscoveryManager::with_default_loader(home_dir).add_from_config(&config);
 
-    let progress_channel = discovery_manager.subscribe();
-    rayon::spawn(move || {
-        display_progress_bar(progress_channel);
-    });
+    if ui_config.show_progress {
+        let progress_channel = discovery_manager.subscribe();
+        rayon::spawn(move || {
+            display_progress_bar(progress_channel);
+        });
+    }
 
     let discovery_results = discovery_manager.collect();
     if discovery_results.is_empty() {
@@ -109,7 +111,7 @@ mod tests {
         let root_dir = tmp.path();
         std::env::set_current_dir(&root_dir).unwrap();
 
-        let result = analyze(AnalyzeArgs::default(), root_dir);
+        let result = analyze(&UiConfig::default(), root_dir);
         assert!(
             matches!(result, Err(AnalyzeError::ConfigurationFileNotFound)),
             "WARNING: If this test fail, there is a change that the ddc.toml exists in current working directory!"
@@ -123,7 +125,7 @@ mod tests {
         std::env::set_current_dir(&root_dir).unwrap();
         fs::create_dir_all(root_dir.join(".ddc.toml")).unwrap();
 
-        let result = analyze(AnalyzeArgs::default(), root_dir);
+        let result = analyze(&UiConfig::default(), root_dir);
         assert!(matches!(
             result,
             Err(AnalyzeError::CantLoadConfigurationFile { inner: _ })
@@ -137,7 +139,7 @@ mod tests {
         std::env::set_current_dir(&root_dir).unwrap();
         fs::write(&root_dir.join(".ddc.toml"), "").unwrap();
 
-        let result = analyze(AnalyzeArgs::default(), root_dir);
+        let result = analyze(&UiConfig::default(), root_dir);
         assert!(matches!(
             result,
             Err(AnalyzeError::CannotParseConfigurationFile { inner: _ })
@@ -193,7 +195,7 @@ discovery = true
         fs::write(&root_path.join(".ddc.toml"), cfc_data).unwrap();
 
         let mut buffer = Vec::new();
-        let result = analyze_inner(&mut buffer, AnalyzeArgs::default(), root_path);
+        let result = analyze_inner(&mut buffer, &UiConfig::default(), root_path);
         assert_eq!(result.unwrap(), ());
 
         let output = String::from_utf8(buffer).unwrap();
