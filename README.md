@@ -109,5 +109,5 @@ Where:
 To see the paths that `ddc` scans by default, run:
 
 ```shell
-ddc analyze --show-definitions
+ddc show-definitions
 ```
