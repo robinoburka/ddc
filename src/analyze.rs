@@ -1,31 +1,20 @@
-use std::fs;
 use std::io::{self, Write};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use owo_colors::OwoColorize;
-use tracing::{debug, error};
+use tracing::error;
 
-use crate::cli::{COMMAND_NAME, UiConfig};
-use crate::config::{Config, get_config_file_candidates};
+use crate::cli::UiConfig;
+use crate::config::{ConfigError, load_config_file};
 use crate::discovery::{DiscoveryManager, default_discovery_definitions};
 use crate::display::{display_progress_bar, print_results};
 
 #[derive(thiserror::Error, Debug)]
 pub enum AnalyzeError {
-    #[error(
-        "Configuration file not found. If this is the first run, call '{} generate-config' command first.",
-        COMMAND_NAME
-    )]
-    ConfigurationFileNotFound,
-    #[error("Configuration file can't be loaded: {inner}")]
-    CantLoadConfigurationFile {
+    #[error("Unable to load configuration file. See details for more information: {inner}")]
+    ConfigError {
         #[from]
-        inner: std::io::Error,
-    },
-    #[error("Wrong configuration file format: {inner}")]
-    CannotParseConfigurationFile {
-        #[from]
-        inner: toml::de::Error,
+        inner: ConfigError,
     },
     #[error("No results found. Do you use one of the supported languages?")]
     NoResultsFound,
@@ -40,15 +29,7 @@ fn analyze_inner<W: Write>(
     ui_config: &UiConfig,
     home_dir: &Path,
 ) -> Result<(), AnalyzeError> {
-    let candidates = get_config_file_candidates(home_dir);
-    let Some(cfg_path) = find_config_file(&candidates) else {
-        error!("Configuration file not found");
-        Err(AnalyzeError::ConfigurationFileNotFound)?
-    };
-
-    debug!("Using configuration file: {}", cfg_path.display());
-    let cfg_data = fs::read_to_string(&cfg_path)?;
-    let config: Config = toml::from_str(cfg_data.as_str())?;
+    let config = load_config_file(home_dir)?;
 
     let discovery_manager =
         DiscoveryManager::with_default_loader(home_dir).add_from_config(&config);
@@ -90,61 +71,11 @@ fn show_default_definitions_inner<W: Write>(out: &mut W, home: &Path) {
         });
 }
 
-fn find_config_file(candidates: &[PathBuf]) -> Option<PathBuf> {
-    for candidate in candidates {
-        debug!("Looking for a configuration file: {}", candidate.display());
-        if candidate.exists() {
-            return Some(candidate.clone());
-        }
-    }
-
-    None
-}
-
 #[cfg(test)]
 mod tests {
+    use std::fs;
+
     use super::*;
-
-    #[test]
-    fn test_analyze_requires_config() {
-        let tmp = tempfile::tempdir().unwrap();
-        let root_dir = tmp.path();
-        std::env::set_current_dir(&root_dir).unwrap();
-
-        let result = analyze(&UiConfig::default(), root_dir);
-        assert!(
-            matches!(result, Err(AnalyzeError::ConfigurationFileNotFound)),
-            "WARNING: If this test fail, there is a change that the ddc.toml exists in current working directory!"
-        );
-    }
-
-    #[test]
-    fn test_analyze_must_read_config() {
-        let tmp = tempfile::tempdir().unwrap();
-        let root_dir = tmp.path();
-        std::env::set_current_dir(&root_dir).unwrap();
-        fs::create_dir_all(root_dir.join(".ddc.toml")).unwrap();
-
-        let result = analyze(&UiConfig::default(), root_dir);
-        assert!(matches!(
-            result,
-            Err(AnalyzeError::CantLoadConfigurationFile { inner: _ })
-        ));
-    }
-
-    #[test]
-    fn test_analyze_must_parse_config() {
-        let tmp = tempfile::tempdir().unwrap();
-        let root_dir = tmp.path();
-        std::env::set_current_dir(&root_dir).unwrap();
-        fs::write(&root_dir.join(".ddc.toml"), "").unwrap();
-
-        let result = analyze(&UiConfig::default(), root_dir);
-        assert!(matches!(
-            result,
-            Err(AnalyzeError::CannotParseConfigurationFile { inner: _ })
-        ));
-    }
 
     #[test]
     fn test_show_default_definitions() {
@@ -187,12 +118,12 @@ mod tests {
         )
         .unwrap();
 
-        let cfc_data = r#"
+        let cfg_data = r#"
 [[paths]]
 path = "projects/"
 discovery = true
         "#;
-        fs::write(&root_path.join(".ddc.toml"), cfc_data).unwrap();
+        fs::write(&root_path.join(".ddc.toml"), cfg_data).unwrap();
 
         let mut buffer = Vec::new();
         let result = analyze_inner(&mut buffer, &UiConfig::default(), root_path);
