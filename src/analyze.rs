@@ -37,14 +37,9 @@ pub fn analyze(args: AnalyzeArgs, home_dir: &Path) -> Result<(), AnalyzeError> {
 
 fn analyze_inner<W: Write>(
     out: &mut W,
-    args: AnalyzeArgs,
+    _args: AnalyzeArgs,
     home_dir: &Path,
 ) -> Result<(), AnalyzeError> {
-    if args.show_definitions {
-        show_default_definitions(out, home_dir);
-        return Ok(());
-    }
-
     let candidates = get_config_file_candidates(home_dir);
     let Some(cfg_path) = find_config_file(&candidates) else {
         error!("Configuration file not found");
@@ -73,7 +68,11 @@ fn analyze_inner<W: Write>(
     Ok(())
 }
 
-fn show_default_definitions<W: Write>(out: &mut W, home: &Path) {
+pub fn show_default_definitions(home_dir: &Path) {
+    show_default_definitions_inner(&mut io::stdout(), home_dir)
+}
+
+fn show_default_definitions_inner<W: Write>(out: &mut W, home: &Path) {
     default_discovery_definitions(home)
         .iter()
         .for_each(|definition| {
@@ -86,7 +85,7 @@ fn show_default_definitions<W: Write>(out: &mut W, home: &Path) {
                 definition.path.display().dimmed()
             )
             .expect("Failed to write to stdout");
-        })
+        });
 }
 
 fn find_config_file(candidates: &[PathBuf]) -> Option<PathBuf> {
@@ -146,20 +145,13 @@ mod tests {
     }
 
     #[test]
-    fn test_analyze_show_definitions() {
+    fn test_show_default_definitions() {
         let tmp = tempfile::tempdir().unwrap();
         let root_dir = tmp.path();
         std::env::set_current_dir(&root_dir).unwrap();
 
         let mut buffer = Vec::new();
-        let result = analyze_inner(
-            &mut buffer,
-            AnalyzeArgs {
-                show_definitions: true,
-            },
-            root_dir,
-        );
-        assert_eq!(result.unwrap(), ());
+        show_default_definitions_inner(&mut buffer, root_dir);
 
         let output = String::from_utf8(buffer).unwrap();
         assert!(

@@ -16,14 +16,11 @@ pub struct Args {
 pub enum Commands {
     /// Generates a skeleton of the configuration file
     GenerateConfig,
-
+    /// Show default paths that are explored
+    ShowDefinitions,
     /// Analyzes data (default command)
     Analyze(AnalyzeArgs),
 }
 
 #[derive(Parser, Debug, Default)]
-pub struct AnalyzeArgs {
-    /// Show default paths that are explored
-    #[arg(long)]
-    pub show_definitions: bool,
-}
+pub struct AnalyzeArgs {}
