@@ -41,6 +41,10 @@ enum UiMode {
 enum Message {
     MoveUp,
     MoveDown,
+    PageUp,
+    PageDown,
+    Home,
+    End,
     Enter,
     GoBack,
     Refresh,
@@ -59,6 +63,7 @@ pub struct App {
     frames: Vec<BrowserFrame>,
     error_message: Option<String>,
     now: SystemTime,
+    page_size: usize,
 }
 
 impl App {
@@ -93,6 +98,7 @@ impl App {
             })],
             error_message: None,
             now: SystemTime::now(),
+            page_size: 0,
         }
     }
 
@@ -123,6 +129,10 @@ impl App {
                             KeyCode::Right | KeyCode::Char('l') => Some(Message::Enter),
                             KeyCode::Left | KeyCode::Char('h') => Some(Message::GoBack),
                             KeyCode::Char('p') => Some(Message::EnterParent),
+                            KeyCode::PageDown => Some(Message::PageDown),
+                            KeyCode::PageUp => Some(Message::PageUp),
+                            KeyCode::Home => Some(Message::Home),
+                            KeyCode::End => Some(Message::End),
                             KeyCode::Char('d') | KeyCode::Char('1') => {
                                 Some(Message::SelectTab(Tab::Projects))
                             }
@@ -154,6 +164,10 @@ impl App {
                 Message::Quit => self.quit(),
                 Message::MoveUp => self.move_up(),
                 Message::MoveDown => self.move_down(),
+                Message::PageUp => self.page_up(),
+                Message::PageDown => self.page_down(),
+                Message::Home => self.home(),
+                Message::End => self.end(),
                 Message::Enter => self.enter(),
                 Message::GoBack => self.go_back(),
                 Message::EnterParent => self.enter_parent(),
@@ -181,18 +195,10 @@ impl App {
         match self.frames.last_mut() {
             Some(BrowserFrame::Projects(projects)) => {
                 let view = projects.get_mut_view();
-                view.current_item = if view.current_item > 0 {
-                    view.current_item - 1
-                } else {
-                    view.current_item
-                }
+                view.current_item = view.current_item.saturating_sub(1);
             }
             Some(BrowserFrame::Directory(directory)) => {
-                directory.current_item = if directory.current_item > 0 {
-                    directory.current_item - 1
-                } else {
-                    directory.current_item
-                }
+                directory.current_item = directory.current_item.saturating_sub(1);
             }
             None => panic!("Missing frame. This shouldn't happen."),
         }
@@ -202,19 +208,74 @@ impl App {
         match self.frames.last_mut() {
             Some(BrowserFrame::Projects(projects)) => {
                 let view = projects.get_mut_view();
-                view.current_item = if view.current_item < view.results.len() {
-                    view.current_item + 1
-                } else {
-                    view.results.len()
-                }
+                view.current_item = view
+                    .current_item
+                    .saturating_add(1)
+                    .min(view.results.len() - 1);
             }
             Some(BrowserFrame::Directory(directory)) => {
-                directory.current_item = if directory.current_item < directory.directory_list.len()
-                {
-                    directory.current_item + 1
-                } else {
-                    directory.directory_list.len()
-                }
+                directory.current_item = directory
+                    .current_item
+                    .saturating_add(1)
+                    .min(directory.directory_list.len() - 1);
+            }
+            None => panic!("Missing frame. This shouldn't happen."),
+        }
+    }
+
+    fn page_up(&mut self) {
+        match self.frames.last_mut() {
+            Some(BrowserFrame::Projects(projects)) => {
+                let view = projects.get_mut_view();
+                view.current_item = view.current_item.saturating_sub(self.page_size);
+            }
+            Some(BrowserFrame::Directory(directory)) => {
+                directory.current_item = directory.current_item.saturating_sub(self.page_size);
+            }
+            None => panic!("Missing frame. This shouldn't happen."),
+        }
+    }
+
+    fn page_down(&mut self) {
+        match self.frames.last_mut() {
+            Some(BrowserFrame::Projects(projects)) => {
+                let view = projects.get_mut_view();
+                view.current_item = view
+                    .current_item
+                    .saturating_add(self.page_size)
+                    .min(view.results.len() - 1);
+            }
+            Some(BrowserFrame::Directory(directory)) => {
+                directory.current_item = directory
+                    .current_item
+                    .saturating_add(self.page_size)
+                    .min(directory.directory_list.len() - 1);
+            }
+            None => panic!("Missing frame. This shouldn't happen."),
+        }
+    }
+
+    fn home(&mut self) {
+        match self.frames.last_mut() {
+            Some(BrowserFrame::Projects(projects)) => {
+                let view = projects.get_mut_view();
+                view.current_item = 0;
+            }
+            Some(BrowserFrame::Directory(directory)) => {
+                directory.current_item = 0;
+            }
+            None => panic!("Missing frame. This shouldn't happen."),
+        }
+    }
+
+    fn end(&mut self) {
+        match self.frames.last_mut() {
+            Some(BrowserFrame::Projects(projects)) => {
+                let view = projects.get_mut_view();
+                view.current_item = view.results.len() - 1;
+            }
+            Some(BrowserFrame::Directory(directory)) => {
+                directory.current_item = directory.directory_list.len() - 1;
             }
             None => panic!("Missing frame. This shouldn't happen."),
         }
@@ -322,14 +383,19 @@ impl App {
         self.mode = UiMode::Normal;
     }
 
-    fn draw(&self, frame: &mut Frame) {
+    fn draw(&mut self, frame: &mut Frame) {
         let chunks = self.create_layout(frame.area());
+
         self.render_header(frame, chunks[0]);
         match self.frames.last() {
             Some(BrowserFrame::Projects(projects_frame)) => {
+                // 3 borders + table header
+                self.page_size = chunks[1].height.saturating_sub(3) as usize;
                 self.render_projects(frame, chunks[1], projects_frame)
             }
             Some(BrowserFrame::Directory(directory_frame)) => {
+                // 2 - just borders
+                self.page_size = chunks[1].height.saturating_sub(2) as usize;
                 self.render_directory(frame, chunks[1], directory_frame)
             }
             None => panic!("Missing frame. This shouldn't happen."),
@@ -488,7 +554,16 @@ impl App {
                 .block(
                     Block::default()
                         .borders(Borders::ALL)
-                        .title(" Controls ")
+                        .title(Line::from(" Controls ").alignment(Alignment::Left))
+                        .title_bottom(
+                            Line::from(" More controls in the help ")
+                                .alignment(Alignment::Right)
+                                .style(
+                                    Style::default()
+                                        .fg(Color::Gray)
+                                        .add_modifier(Modifier::ITALIC),
+                                ),
+                        )
                         .style(Style::default().fg(Color::Green)),
                 )
                 .style(Style::default().fg(Color::White))
@@ -505,7 +580,7 @@ impl App {
                 Span::styled("d", Style::default().fg(Color::Yellow)),
                 Span::raw(", "),
                 Span::styled("1", Style::default().fg(Color::Yellow)),
-                Span::raw("   "),
+                Span::raw("      "),
                 Span::raw("Switch to the "),
                 Span::styled(
                     "Detected Projects",
@@ -517,7 +592,7 @@ impl App {
                 Span::styled("t", Style::default().fg(Color::Yellow)),
                 Span::raw(", "),
                 Span::styled("2", Style::default().fg(Color::Yellow)),
-                Span::raw("   "),
+                Span::raw("      "),
                 Span::raw("Switch to the "),
                 Span::styled(
                     "Tooling Overview",
@@ -530,59 +605,79 @@ impl App {
                 Span::styled("↑", Style::default().fg(Color::Yellow)),
                 Span::raw(", "),
                 Span::styled("k", Style::default().fg(Color::Yellow)),
-                Span::raw("   "),
-                Span::raw("Go Up"),
+                Span::raw("      "),
+                Span::raw("Go up"),
             ]),
             Line::from(vec![
                 Span::styled("↓", Style::default().fg(Color::Yellow)),
                 Span::raw(", "),
                 Span::styled("j", Style::default().fg(Color::Yellow)),
-                Span::raw("   "),
+                Span::raw("      "),
                 Span::raw("Go Down"),
+            ]),
+            Line::from(vec![
+                Span::styled("PageUp", Style::default().fg(Color::Yellow)),
+                Span::raw("    "),
+                Span::raw("Go one page up"),
+            ]),
+            Line::from(vec![
+                Span::styled("PageDown", Style::default().fg(Color::Yellow)),
+                Span::raw("  "),
+                Span::raw("Go one page down"),
+            ]),
+            Line::from(vec![
+                Span::styled("Home", Style::default().fg(Color::Yellow)),
+                Span::raw("      "),
+                Span::raw("Go to the first item"),
+            ]),
+            Line::from(vec![
+                Span::styled("End", Style::default().fg(Color::Yellow)),
+                Span::raw("       "),
+                Span::raw("Go to the last item"),
             ]),
             Line::from(vec![
                 Span::styled("←", Style::default().fg(Color::Yellow)),
                 Span::raw(", "),
                 Span::styled("h", Style::default().fg(Color::Yellow)),
-                Span::raw("   "),
+                Span::raw("      "),
                 Span::raw("Go Back"),
             ]),
             Line::from(vec![
                 Span::styled("→", Style::default().fg(Color::Yellow)),
                 Span::raw(", "),
                 Span::styled("l", Style::default().fg(Color::Yellow)),
-                Span::raw("   "),
+                Span::raw("      "),
                 Span::raw("Enter the selected item"),
             ]),
             Line::from(vec![
                 Span::styled("p", Style::default().fg(Color::Yellow)),
-                Span::raw("      "),
+                Span::raw("         "),
                 Span::raw("Enter the parent of the selected project or tool"),
             ]),
             Line::from(vec![
-                Span::raw("       "),
+                Span::raw("          "),
                 Span::raw("This is useful if you want to inspect a footprint"),
             ])
             .style(Style::default().fg(Color::Gray)),
             Line::from(vec![
-                Span::raw("       "),
+                Span::raw("          "),
                 Span::raw("of the whole project, and not just the dev dir."),
             ])
             .style(Style::default().fg(Color::Gray)),
             Line::from(""),
             Line::from(vec![
                 Span::styled("Esc", Style::default().fg(Color::Yellow)),
-                Span::raw("    "),
+                Span::raw("       "),
                 Span::raw("Close any pop-up window, e.g. Help"),
             ]),
             Line::from(vec![
                 Span::styled("?", Style::default().fg(Color::Yellow)),
-                Span::raw("      "),
+                Span::raw("         "),
                 Span::raw("Show/close the help pop-up window"),
             ]),
             Line::from(vec![
                 Span::styled("q", Style::default().fg(Color::Yellow)),
-                Span::raw("      "),
+                Span::raw("         "),
                 Span::raw("Quit the application"),
             ]),
         ])
