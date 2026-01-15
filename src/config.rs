@@ -4,8 +4,6 @@ use std::path::{Path, PathBuf};
 use serde::Deserialize;
 use tracing::{debug, error};
 
-use crate::cli::COMMAND_NAME;
-
 #[derive(Debug, Deserialize)]
 pub struct PathDefinition {
     pub path: PathBuf,
@@ -25,8 +23,7 @@ pub struct Config {
 #[derive(thiserror::Error, Debug)]
 pub enum ConfigError {
     #[error(
-        "Configuration file not found. If this is the first run, call '{} generate-config' command first.",
-        COMMAND_NAME
+        "Configuration file not found. If this is the first run, call the 'generate-config' command first."
     )]
     ConfigurationFileNotFound,
     #[error("Configuration file can't be loaded: {inner}")]

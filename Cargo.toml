@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 readme = "README.md"
 license = "MIT"
+description = "Dev Dirs Cleaner - A tiny tool to keep a developer's disk tidy."
 
 [profile.profiling]
 inherits = "release"

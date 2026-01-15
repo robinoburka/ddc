@@ -2,12 +2,10 @@ use clap::{ArgAction, Parser, Subcommand};
 
 use crate::logging::LoggingLevel;
 
-pub static COMMAND_NAME: &str = "ddc";
-
 #[derive(Parser, Debug)]
-#[command(name = COMMAND_NAME)]
+#[command(version, about, long_about = None)]
 pub struct Args {
-    /// Sets the level of verbosity (--verbose/-v, -vv)
+    /// Sets the level of verbosity (--verbose/-v, -vv for tracing output)
     #[arg(short = 'v', long = "verbose", action = ArgAction::Count)]
     pub verbosity: u8,
     #[command(subcommand)]
