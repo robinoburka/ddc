@@ -46,7 +46,7 @@ impl ProgressReporter for ChannelProgressReporter {
     }
 }
 
-pub struct DiscoveryManager<L: PathLoader> {
+pub struct DiscoveryManager<L: PathLoader = FullyParallelLoader> {
     home: PathBuf,
     loader: L,
     db: Arc<FilesDB>,
@@ -55,24 +55,14 @@ pub struct DiscoveryManager<L: PathLoader> {
     progress_rx: Receiver<ProgressEvent>,
 }
 
-impl DiscoveryManager<FullyParallelLoader> {
-    pub fn with_default_loader(home: &Path) -> Self {
-        let (progress_tx, progress_rx) = channel::bounded(100);
-
-        Self {
-            home: home.to_path_buf(),
-            loader: FullyParallelLoader,
-            db: Arc::new(FilesDB::new()),
-            definitions: Arc::new(default_discovery_definitions(home)),
-            progress_tx,
-            progress_rx,
-        }
+impl DiscoveryManager {
+    pub fn new(home: &Path) -> Self {
+        Self::with_loader(Default::default(), home)
     }
 }
 
 impl<L: PathLoader> DiscoveryManager<L> {
-    #[allow(dead_code)]
-    pub fn new(loader: L, home: &Path) -> Self {
+    pub fn with_loader(loader: L, home: &Path) -> Self {
         let (progress_tx, progress_rx) = channel::bounded(100);
 
         Self {
@@ -326,8 +316,7 @@ mod tests {
             ],
         };
 
-        let discovery_manager =
-            DiscoveryManager::with_default_loader(root_path).add_from_config(&config);
+        let discovery_manager = DiscoveryManager::new(root_path).add_from_config(&config);
         let progress = discovery_manager.subscribe();
         let discovery_results = discovery_manager.collect();
 

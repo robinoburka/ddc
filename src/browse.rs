@@ -34,8 +34,7 @@ pub enum BrowseError {
 pub fn browse(ui_config: &UiConfig, home_dir: &Path) -> Result<(), BrowseError> {
     let config = load_config_file(home_dir)?;
 
-    let discovery_manager =
-        DiscoveryManager::with_default_loader(home_dir).add_from_config(&config);
+    let discovery_manager = DiscoveryManager::new(home_dir).add_from_config(&config);
 
     let wg = WaitGroup::new();
     if ui_config.show_progress {
