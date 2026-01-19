@@ -41,7 +41,7 @@ fn analyze_inner<W: Write>(
     }
 
     let discovery_results = discovery_manager.collect();
-    if discovery_results.is_empty() {
+    if discovery_results.projects.is_empty() && discovery_results.tools.len() == 1 {
         error!("No results found.");
         return Err(AnalyzeError::NoResultsFound);
     }

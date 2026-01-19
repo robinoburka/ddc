@@ -7,9 +7,8 @@ use tracing::error;
 use crate::browse_tui::App;
 use crate::cli::UiConfig;
 use crate::config::{ConfigError, load_config_file};
-use crate::discovery::{DiscoveryManager, DiscoveryResult};
+use crate::discovery::{DiscoveryManager, DiscoveryResults};
 use crate::display::display_progress_bar;
-use crate::files_db::FilesDB;
 
 #[derive(thiserror::Error, Debug)]
 pub enum BrowseError {
@@ -46,21 +45,32 @@ pub fn browse(ui_config: &UiConfig, home_dir: &Path) -> Result<(), BrowseError> 
         });
     }
 
-    let (discovery_results, db) = discovery_manager.collect_and_get_db();
-    let db = db.ok_or(BrowseError::ProgrammerError)?;
+    let discovery_results = discovery_manager.collect();
+    // Don't remove the following check, or rewrite .unwrap() lines in start_tui
+    if discovery_results.db.is_none() {
+        return Err(BrowseError::ProgrammerError);
+    }
 
     wg.wait();
 
-    if discovery_results.is_empty() {
+    if discovery_results.projects.is_empty() && discovery_results.tools.is_empty() {
         error!("No results found.");
         return Err(BrowseError::NoResultsFound);
     }
 
-    start_tui(db, discovery_results)?;
+    start_tui(discovery_results)?;
 
     Ok(())
 }
 
-fn start_tui(db: FilesDB, discovery_results: Vec<DiscoveryResult>) -> io::Result<()> {
-    ratatui::run(|terminal| App::new(db, discovery_results).run(terminal))
+fn start_tui(discovery_results: DiscoveryResults) -> io::Result<()> {
+    ratatui::run(|terminal| {
+        App::new(
+            discovery_results.projects,
+            discovery_results.tools,
+            // Already checked in browse()
+            discovery_results.db.unwrap(),
+        )
+        .run(terminal)
+    })
 }

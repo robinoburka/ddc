@@ -7,11 +7,13 @@ use crossbeam::channel::{Receiver, Sender};
 use tracing::{debug_span, instrument, warn};
 
 use crate::config::Config;
+use crate::discovery::DiscoveryDefinition;
 use crate::discovery::default_definitions::default_discovery_definitions;
 use crate::discovery::detectors::{JsNpmDetector, PythonVenvDetector, RustBuildDirDetector};
-use crate::discovery::discovery_definitions::{ParentInfo, ResultType};
+use crate::discovery::discovery_definitions::{
+    DiscoveryResults, ParentInfo, ProjectResult, ToolingResult,
+};
 use crate::discovery::progress::{ProgressEvent, ProgressReporter};
-use crate::discovery::{DiscoveryDefinition, DiscoveryResult};
 use crate::files_db::FilesDB;
 use crate::loader::FullyParallelLoader;
 use crate::types::Language;
@@ -53,6 +55,12 @@ pub struct DiscoveryManager<L: PathLoader = FullyParallelLoader> {
     definitions: Arc<Vec<DiscoveryDefinition>>,
     progress_tx: Sender<ProgressEvent>,
     progress_rx: Receiver<ProgressEvent>,
+}
+
+#[derive(Debug)]
+enum DiscoveryResult {
+    Project(ProjectResult),
+    Tool(ToolingResult),
 }
 
 impl DiscoveryManager {
@@ -116,19 +124,16 @@ impl<L: PathLoader> DiscoveryManager<L> {
         ChannelProgressReporter::new(self.progress_tx.clone())
     }
 
-    pub fn collect(mut self) -> Vec<DiscoveryResult> {
+    pub fn collect(mut self) -> DiscoveryResults {
         self.load_paths();
-        let results = self.discover();
+        let (projects, tools) = self.discover();
         drop(self.progress_tx);
-        results
-    }
 
-    pub fn collect_and_get_db(mut self) -> (Vec<DiscoveryResult>, Option<FilesDB>) {
-        self.load_paths();
-        let results = self.discover();
-        let db = Arc::into_inner(self.db);
-        drop(self.progress_tx);
-        (results, db)
+        DiscoveryResults {
+            projects,
+            tools,
+            db: Arc::into_inner(self.db),
+        }
     }
 
     #[instrument(level = "debug", skip(self))]
@@ -143,11 +148,12 @@ impl<L: PathLoader> DiscoveryManager<L> {
     }
 
     #[instrument(level = "debug", skip(self))]
-    fn discover(&mut self) -> Vec<DiscoveryResult> {
+    fn discover(&mut self) -> (Vec<ProjectResult>, Vec<ToolingResult>) {
         let reporter = self.create_reporter();
         reporter.report(ProgressEvent::DiscoveryStart { count: 4 });
 
-        let mut results = vec![];
+        let mut project_results = vec![];
+        let mut tooling_results = vec![];
         let (tx, rx) = channel::unbounded();
         spawn_discovery_thread(
             self.db.clone(),
@@ -181,8 +187,8 @@ impl<L: PathLoader> DiscoveryManager<L> {
                     let parent = pd.path.parent().map(|p| p.to_path_buf());
                     let size = db.iter_dir(&pd.path).filter_map(|fi| fi.size).sum();
                     let last_update = db.iter_dir(&pd.path).filter_map(|fi| fi.touched).max();
-                    let r = DiscoveryResult {
-                        result_type: ResultType::Static(pd.description.clone()),
+                    let r = DiscoveryResult::Tool(ToolingResult {
+                        description: pd.description.clone(),
                         lang: pd.lang,
                         path: pd.path.clone(),
                         last_update,
@@ -191,7 +197,7 @@ impl<L: PathLoader> DiscoveryManager<L> {
                             size: db.iter_dir(&parent_path).filter_map(|fi| fi.size).sum(),
                             path: parent_path,
                         }),
-                    };
+                    });
                     tx.send(r).unwrap();
                 }
             }
@@ -199,12 +205,19 @@ impl<L: PathLoader> DiscoveryManager<L> {
         });
 
         for res in rx.iter() {
-            results.push(res);
+            match res {
+                DiscoveryResult::Project(r) => project_results.push(r),
+                DiscoveryResult::Tool(r) => {
+                    if r.size > 0 {
+                        tooling_results.push(r)
+                    }
+                }
+            }
         }
 
         reporter.report(ProgressEvent::DiscoveryFinished);
 
-        results
+        (project_results, tooling_results)
     }
 }
 
@@ -245,9 +258,8 @@ fn discovery_thread<D, R>(
                 let size = db.iter_dir(p).filter_map(|fi| fi.size).sum();
                 let last_update = db.iter_dir(p).filter_map(|fi| fi.touched).max();
                 let parent = p.parent().map(|p| p.to_path_buf());
-                let r = DiscoveryResult {
-                    result_type: ResultType::Discovery,
-                    lang: Some(D::LANG),
+                let r = DiscoveryResult::Project(ProjectResult {
+                    lang: D::LANG,
                     path: (*p).clone(),
                     last_update,
                     size,
@@ -255,7 +267,7 @@ fn discovery_thread<D, R>(
                         size: db.iter_dir(&parent_path).filter_map(|fi| fi.size).sum(),
                         path: parent_path,
                     }),
-                };
+                });
                 tx.send(r).unwrap();
             });
         }
@@ -272,7 +284,6 @@ mod tests {
 
     use super::*;
     use crate::config::PathDefinition;
-    use crate::discovery::discovery_definitions::ResultType;
 
     #[test]
     fn test_discovery_manager() {
@@ -318,27 +329,20 @@ mod tests {
 
         let discovery_manager = DiscoveryManager::new(root_path).add_from_config(&config);
         let progress = discovery_manager.subscribe();
-        let discovery_results = discovery_manager.collect();
+        let mut discovery_results = discovery_manager.collect();
 
-        let mut found_paths: Vec<_> = discovery_results.iter().filter(|r| r.size > 0).collect();
-        found_paths.sort_by_key(|r| r.path.clone());
+        discovery_results.projects.sort_by_key(|r| r.path.clone());
+        discovery_results.tools.sort_by_key(|r| r.path.clone());
 
-        assert_eq!(found_paths.len(), 4);
-
-        // Coming from Default definitions
-        assert_eq!(
-            found_paths[0].result_type,
-            ResultType::Static(String::from("uv cache"))
-        );
-        assert_eq!(found_paths[0].path, root_path.join(".cache/uv"));
-        assert_eq!(found_paths[0].lang, Some(Language::Python));
-        let dirs_size = fs::metadata(&root_path.join(".cache/uv")).unwrap().len();
-        assert_eq!(found_paths[0].size, dirs_size + 43);
+        assert_eq!(discovery_results.projects.len(), 2);
+        assert_eq!(discovery_results.tools.len(), 2);
 
         // Coming from config - discovery
-        assert_eq!(found_paths[1].result_type, ResultType::Discovery);
-        assert_eq!(found_paths[1].path, root_path.join("projects/python/venv"));
-        assert_eq!(found_paths[1].lang, Some(Language::Python));
+        assert_eq!(
+            discovery_results.projects[0].path,
+            root_path.join("projects/python/venv")
+        );
+        assert_eq!(discovery_results.projects[0].lang, Language::Python);
         let dirs_size: u64 = vec![
             &root_path.join("projects/python"),
             &root_path.join("projects/python/venv"),
@@ -346,11 +350,13 @@ mod tests {
         .iter()
         .map(|p| fs::metadata(p).unwrap().len())
         .sum();
-        assert_eq!(found_paths[1].size, dirs_size + 22);
+        assert_eq!(discovery_results.projects[0].size, dirs_size + 22);
 
-        assert_eq!(found_paths[2].result_type, ResultType::Discovery);
-        assert_eq!(found_paths[2].path, root_path.join("projects/rust/target"));
-        assert_eq!(found_paths[2].lang, Some(Language::Rust));
+        assert_eq!(
+            discovery_results.projects[1].path,
+            root_path.join("projects/rust/target")
+        );
+        assert_eq!(discovery_results.projects[1].lang, Language::Rust);
         let dirs_size: u64 = vec![
             &root_path.join("projects/rust"),
             &root_path.join("projects/rust/target"),
@@ -359,17 +365,27 @@ mod tests {
         .iter()
         .map(|p| fs::metadata(p).unwrap().len())
         .sum();
-        assert_eq!(found_paths[2].size, dirs_size + 15);
+        assert_eq!(discovery_results.projects[1].size, dirs_size + 15);
+
+        // Coming from Default definitions
+        assert_eq!(
+            discovery_results.tools[0].description,
+            String::from("uv cache")
+        );
+        assert_eq!(discovery_results.tools[0].path, root_path.join(".cache/uv"));
+        assert_eq!(discovery_results.tools[0].lang, Some(Language::Python));
+        let dirs_size = fs::metadata(&root_path.join(".cache/uv")).unwrap().len();
+        assert_eq!(discovery_results.tools[0].size, dirs_size + 43);
 
         // Coming from config - non-discoverable
         assert_eq!(
-            found_paths[3].result_type,
-            ResultType::Static(String::from("Just to check"))
+            discovery_results.tools[1].description,
+            String::from("Just to check")
         );
-        assert_eq!(found_paths[3].path, root_path.join("to_sum"));
-        assert_eq!(found_paths[3].lang, Some(Language::Rust));
+        assert_eq!(discovery_results.tools[1].path, root_path.join("to_sum"));
+        assert_eq!(discovery_results.tools[1].lang, Some(Language::Rust));
         let dirs_size = fs::metadata(&root_path.join("to_sum")).unwrap().len();
-        assert_eq!(found_paths[3].size, dirs_size + 13);
+        assert_eq!(discovery_results.tools[1].size, dirs_size + 13);
 
         // Quick check of the most important events collected from progress reporter
         let progress_report = progress.iter().collect::<Vec<_>>();

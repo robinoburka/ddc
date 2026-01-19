@@ -1,52 +1,28 @@
 use std::path::PathBuf;
 
-use crate::discovery::DiscoveryResult;
+use crate::discovery::{ProjectResult, ToolingResult};
 use crate::file_info::FileInfo;
 use crate::files_db::FilesDB;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug)]
 pub(super) enum Tab {
-    Projects,
-    Tools,
+    Projects(ResultsTab<ProjectResult>),
+    Tooling(ResultsTab<ToolingResult>),
 }
 
 #[derive(Debug)]
-pub(super) enum BrowserFrame {
-    Projects(DiscoveryResults),
-    Directory(DirectoryFrame),
-}
-
-#[derive(Debug)]
-pub(super) struct DiscoveryResults {
-    pub(super) current_view: Tab,
-    pub(super) projects: DiscoveryResultsView,
-    pub(super) tools: DiscoveryResultsView,
-}
-
-impl DiscoveryResults {
-    pub(super) fn get_mut_view(&mut self) -> &mut DiscoveryResultsView {
-        match self.current_view {
-            Tab::Projects => &mut self.projects,
-            Tab::Tools => &mut self.tools,
-        }
-    }
-
-    pub(super) fn get_view(&self) -> &DiscoveryResultsView {
-        match self.current_view {
-            Tab::Projects => &self.projects,
-            Tab::Tools => &self.tools,
-        }
-    }
-}
-
-#[derive(Debug)]
-pub(super) struct DiscoveryResultsView {
+pub(super) struct ResultsTab<T> {
     pub(super) current_item: usize,
-    pub(super) results: Vec<DiscoveryResult>,
+    pub(super) results: Vec<T>,
 }
 
 #[derive(Debug)]
-pub(super) struct DirectoryFrame {
+pub(super) struct Browser {
+    pub(super) frames: Vec<DirectoryBrowserFrame>,
+}
+
+#[derive(Debug)]
+pub(super) struct DirectoryBrowserFrame {
     pub(super) current_item: usize,
     pub(super) cwd: PathBuf,
     pub(super) directory_list: Vec<DirItem>,

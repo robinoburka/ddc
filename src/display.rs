@@ -10,67 +10,57 @@ use tabled::settings::{Alignment, Color, Modify, Panel, Style, object::Cell};
 use tabled::{Table, Tabled};
 use tracing::instrument;
 
-use crate::discovery::{DiscoveryResult, ProgressEvent, ResultType};
+use crate::discovery::{DiscoveryResults, ProgressEvent, ProjectResult, ToolingResult};
 use crate::display_tools::{ColorCode, get_size_color_code, get_time_color_code};
 
 #[instrument(level = "debug", skip(out, discovery_results))]
-pub fn print_results<W: Write>(out: &mut W, discovery_results: Vec<DiscoveryResult>) {
-    let mut discovery_data = vec![];
-    let mut static_data = vec![];
+pub fn print_results<W: Write>(out: &mut W, discovery_results: DiscoveryResults) {
+    let projects_data: Vec<Record> = discovery_results
+        .projects
+        .iter()
+        .map(Record::from)
+        .collect();
+    let tooling_data: Vec<ToolingRecord> = discovery_results
+        .tools
+        .iter()
+        .map(ToolingRecord::from)
+        .collect();
 
-    let mut discovery_sum: u64 = 0;
-    let mut static_sum: u64 = 0;
-
-    for result in discovery_results {
-        match result.result_type {
-            ResultType::Discovery => {
-                discovery_sum += result.size;
-                discovery_data.push(Record::from(result))
-            }
-            ResultType::Static(ref description) => {
-                static_sum += result.size;
-                if result.size != 0 {
-                    static_data.push(StaticRecord {
-                        description: description.clone(),
-                        record: Record::from(result),
-                    });
-                }
-            }
-        }
-    }
+    let projects_sum: u64 = discovery_results.projects.iter().map(|r| r.size).sum();
+    let tooling_sum: u64 = discovery_results.tools.iter().map(|r| r.size).sum();
 
     let now = SystemTime::now();
 
-    let mut table_static_build = Table::new(&static_data);
-    table_static_build.with(Panel::header("Tooling"));
-    table_static_build.with(Panel::footer(format_size(static_sum, DECIMAL)));
-    table_static_build.with(Modify::new(Rows::last()).with(Color::BOLD));
-    table_static_build.with(Modify::new(Rows::last()).with(Alignment::right()));
-    table_static_build.with(Modify::new(Cell::new(0, 0)).with(Color::BOLD));
-    table_static_build.with(Style::empty());
-    static_data.iter().enumerate().for_each(|(i, d)| {
-        table_static_build
+    let mut table_tooling_build = Table::new(&tooling_data);
+    table_tooling_build.with(Panel::header("Tooling"));
+    table_tooling_build.with(Panel::footer(format_size(tooling_sum, DECIMAL)));
+    table_tooling_build.with(Modify::new(Rows::last()).with(Color::BOLD));
+    table_tooling_build.with(Modify::new(Rows::last()).with(Alignment::right()));
+    table_tooling_build.with(Modify::new(Cell::new(0, 0)).with(Color::BOLD));
+    table_tooling_build.with(Style::empty());
+    tooling_data.iter().enumerate().for_each(|(i, d)| {
+        table_tooling_build
             .with(Modify::new(Cell::new(i + 2, 3)).with(time_color_coded(&now, &d.record.time)));
-        table_static_build
+        table_tooling_build
             .with(Modify::new(Cell::new(i + 2, 4)).with(size_color_coded(d.record.size)));
     });
-    let table_static = table_static_build.to_string();
-    writeln!(out, "{table_static}").expect("Cannot write to stdout");
+    let table_tooling = table_tooling_build.to_string();
+    writeln!(out, "{table_tooling}").expect("Cannot write to stdout");
 
-    let mut table_discovery_build = Table::new(&discovery_data);
-    table_discovery_build.with(Panel::header("Projects"));
-    table_discovery_build.with(Panel::footer(format_size(discovery_sum, DECIMAL)));
-    table_discovery_build.with(Modify::new(Rows::last()).with(Color::BOLD));
-    table_discovery_build.with(Modify::new(Rows::last()).with(Alignment::right()));
-    table_discovery_build.with(Modify::new(Cell::new(0, 0)).with(Color::BOLD));
-    table_discovery_build.with(Style::empty());
-    discovery_data.iter().enumerate().for_each(|(i, d)| {
-        table_discovery_build
+    let mut table_projects_build = Table::new(&projects_data);
+    table_projects_build.with(Panel::header("Projects"));
+    table_projects_build.with(Panel::footer(format_size(projects_sum, DECIMAL)));
+    table_projects_build.with(Modify::new(Rows::last()).with(Color::BOLD));
+    table_projects_build.with(Modify::new(Rows::last()).with(Alignment::right()));
+    table_projects_build.with(Modify::new(Cell::new(0, 0)).with(Color::BOLD));
+    table_projects_build.with(Style::empty());
+    projects_data.iter().enumerate().for_each(|(i, d)| {
+        table_projects_build
             .with(Modify::new(Cell::new(i + 2, 2)).with(time_color_coded(&now, &d.time)));
-        table_discovery_build.with(Modify::new(Cell::new(i + 2, 3)).with(size_color_coded(d.size)));
+        table_projects_build.with(Modify::new(Cell::new(i + 2, 3)).with(size_color_coded(d.size)));
     });
-    let table_discovery = table_discovery_build.to_string();
-    writeln!(out, "{table_discovery}").expect("Cannot write to stdout");
+    let table_projects = table_projects_build.to_string();
+    writeln!(out, "{table_projects}").expect("Cannot write to stdout");
 }
 
 #[derive(Tabled)]
@@ -90,17 +80,17 @@ struct Record {
 }
 
 #[derive(Tabled)]
-struct StaticRecord {
+struct ToolingRecord {
     #[tabled(rename = "Description")]
     description: String,
     #[tabled(inline)]
     record: Record,
 }
 
-impl From<DiscoveryResult> for Record {
-    fn from(value: DiscoveryResult) -> Self {
+impl From<&ProjectResult> for Record {
+    fn from(value: &ProjectResult) -> Self {
         Self {
-            lang: value.lang.map(|l| l.to_string()),
+            lang: Some(value.lang.to_string()),
             time: value.last_update,
             human_time: value.last_update.map(|t| {
                 DateTime::<Local>::from(t)
@@ -110,6 +100,26 @@ impl From<DiscoveryResult> for Record {
             path: value.path.display().to_string(),
             human_size: format_size(value.size, DECIMAL),
             size: value.size,
+        }
+    }
+}
+
+impl From<&ToolingResult> for ToolingRecord {
+    fn from(value: &ToolingResult) -> Self {
+        Self {
+            description: value.description.clone(),
+            record: Record {
+                lang: value.lang.map(|l| l.to_string()),
+                time: value.last_update,
+                human_time: value.last_update.map(|t| {
+                    DateTime::<Local>::from(t)
+                        .format("%Y-%m-%d %H:%M:%S")
+                        .to_string()
+                }),
+                path: value.path.display().to_string(),
+                human_size: format_size(value.size, DECIMAL),
+                size: value.size,
+            },
         }
     }
 }
