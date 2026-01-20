@@ -691,47 +691,14 @@ impl App {
         area: Rect,
         projects_tab: &ResultsTab<ProjectResult>,
     ) {
-        let rows: Vec<_> = projects_tab
-            .results
-            .iter()
-            .map(|result| self.create_project_row(result))
-            .collect();
-
-        let table = Table::new(
-            rows,
-            [
-                Constraint::Length(3),
-                Constraint::Percentage(60),
-                Constraint::Length(10),
-                Constraint::Length(20),
-                Constraint::Length(11),
-            ],
-        )
-        .header(
-            Row::new(["", "Project", "Size", "Last update", "Parent size"]).style(
-                Style::default()
-                    .fg(Color::Blue)
-                    .add_modifier(Modifier::BOLD),
-            ),
-        )
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title(" Projects ")
-                .style(Style::default().fg(Color::LightYellow)),
-        )
-        .row_highlight_style(
-            Style::default()
-                .bg(Color::Blue)
-                .fg(Color::White)
-                .add_modifier(Modifier::BOLD),
-        )
-        .highlight_symbol("► ");
-
-        let mut table_state = TableState::default();
-        table_state.select(Some(projects_tab.current_item));
-
-        frame.render_stateful_widget(table, area, &mut table_state);
+        self.render_results(
+            frame,
+            area,
+            projects_tab,
+            " Projects ",
+            "Project",
+            Self::create_project_row,
+        );
     }
 
     fn render_tooling(
@@ -740,11 +707,26 @@ impl App {
         area: Rect,
         tooling_tab: &ResultsTab<ToolingResult>,
     ) {
-        let rows: Vec<_> = tooling_tab
-            .results
-            .iter()
-            .map(|result| self.create_tooling_row(result))
-            .collect();
+        self.render_results(
+            frame,
+            area,
+            tooling_tab,
+            " Tools ",
+            "Tool",
+            Self::create_tooling_row,
+        );
+    }
+
+    fn render_results<'a, T>(
+        &'a self,
+        frame: &mut Frame,
+        area: Rect,
+        tab: &'a ResultsTab<T>,
+        title: &str,
+        header: &str,
+        row_fn: impl Fn(&'a Self, &'a T) -> Row<'a>,
+    ) {
+        let rows: Vec<_> = tab.results.iter().map(|r| row_fn(self, r)).collect();
 
         let table = Table::new(
             rows,
@@ -757,7 +739,7 @@ impl App {
             ],
         )
         .header(
-            Row::new(["", "Tool", "Size", "Last update", "Parent size"]).style(
+            Row::new(["", header, "Size", "Last update", "Parent size"]).style(
                 Style::default()
                     .fg(Color::Blue)
                     .add_modifier(Modifier::BOLD),
@@ -766,7 +748,7 @@ impl App {
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .title(" Tools ")
+                .title(title)
                 .style(Style::default().fg(Color::LightYellow)),
         )
         .row_highlight_style(
@@ -778,7 +760,7 @@ impl App {
         .highlight_symbol("► ");
 
         let mut table_state = TableState::default();
-        table_state.select(Some(tooling_tab.current_item));
+        table_state.select(Some(tab.current_item));
 
         frame.render_stateful_widget(table, area, &mut table_state);
     }
@@ -786,98 +768,81 @@ impl App {
     fn create_project_row<'a>(&self, result: &'a ProjectResult) -> Row<'a> {
         let icon = format!("{} ", result.lang);
 
-        let size = format_size(result.size, DECIMAL);
-        let size_color_code = match get_size_color_code(result.size) {
-            ColorCode::None => Color::White,
-            ColorCode::Low => Color::Green,
-            ColorCode::Medium => Color::Yellow,
-            ColorCode::High => Color::Red,
-        };
-        let parent_size = result
-            .parent
-            .as_ref()
-            .map(|p| format_size(p.size, DECIMAL))
-            .unwrap_or_default();
+        let main_cell = Line::from(vec![Span::raw(result.path.display().to_string())]);
 
-        let last_update = result
-            .last_update
-            .map(|t| {
-                DateTime::<Local>::from(t)
-                    .format("%Y-%m-%d %H:%M:%S")
-                    .to_string()
-            })
-            .unwrap_or_default();
-        let last_update_color_code = match get_time_color_code(&self.now, &result.last_update) {
-            ColorCode::None => Color::White,
-            ColorCode::Low => Color::Green,
-            ColorCode::Medium => Color::Yellow,
-            ColorCode::High => Color::Red,
-        };
-
-        let path_line = Line::from(vec![Span::raw(result.path.display().to_string())]);
-
-        Row::new(vec![
-            Cell::from(icon),
-            Cell::from(path_line),
-            Cell::from(size).style(Style::default().fg(size_color_code)),
-            Cell::from(last_update).style(Style::default().fg(last_update_color_code)),
-            Cell::from(parent_size).style(Style::default().fg(Color::DarkGray)),
-        ])
-        .style(Style::default().fg(Color::White))
+        self.create_result_row(
+            icon,
+            main_cell,
+            result.size,
+            result.parent.as_ref().map(|p| p.size),
+            result.last_update,
+        )
     }
 
     fn create_tooling_row<'a>(&self, result: &'a ToolingResult) -> Row<'a> {
-        let icon = format!(
-            "{} ",
-            if let Some(lang) = result.lang {
-                format!("{} ", lang)
-            } else {
-                String::from(" ")
-            }
-        );
-
-        let size = format_size(result.size, DECIMAL);
-        let size_color_code = match get_size_color_code(result.size) {
-            ColorCode::None => Color::White,
-            ColorCode::Low => Color::Green,
-            ColorCode::Medium => Color::Yellow,
-            ColorCode::High => Color::Red,
-        };
-        let parent_size = result
-            .parent
+        let icon = result
+            .lang
             .as_ref()
-            .map(|p| format_size(p.size, DECIMAL))
-            .unwrap_or_default();
+            .map(|l| format!("{} ", l))
+            .unwrap_or_else(|| " ".to_string());
 
-        let last_update = result
-            .last_update
-            .map(|t| {
-                DateTime::<Local>::from(t)
-                    .format("%Y-%m-%d %H:%M:%S")
-                    .to_string()
-            })
-            .unwrap_or_default();
-        let last_update_color_code = match get_time_color_code(&self.now, &result.last_update) {
-            ColorCode::None => Color::White,
-            ColorCode::Low => Color::Green,
-            ColorCode::Medium => Color::Yellow,
-            ColorCode::High => Color::Red,
-        };
-
-        let path_line = Line::from(vec![
-            Span::raw(result.description.as_str()),
+        let main_cell = Line::from(vec![
+            Span::raw(&result.description),
             Span::styled(
                 format!(" ({})", result.path.display()),
                 Style::default().fg(Color::DarkGray),
             ),
         ]);
 
+        self.create_result_row(
+            icon,
+            main_cell,
+            result.size,
+            result.parent.as_ref().map(|p| p.size),
+            result.last_update,
+        )
+    }
+
+    fn create_result_row<'a>(
+        &self,
+        icon: String,
+        main_cell: Line<'a>,
+        size: u64,
+        parent_size: Option<u64>,
+        last_update: Option<SystemTime>,
+    ) -> Row<'a> {
+        let size_text = format_size(size, DECIMAL);
+        let size_color = match get_size_color_code(size) {
+            ColorCode::None => Color::White,
+            ColorCode::Low => Color::Green,
+            ColorCode::Medium => Color::Yellow,
+            ColorCode::High => Color::Red,
+        };
+
+        let parent_size_text = parent_size
+            .map(|s| format_size(s, DECIMAL))
+            .unwrap_or_default();
+
+        let last_update_text = last_update
+            .map(|t| {
+                DateTime::<Local>::from(t)
+                    .format("%Y-%m-%d %H:%M:%S")
+                    .to_string()
+            })
+            .unwrap_or_default();
+        let last_update_color = match get_time_color_code(&self.now, &last_update) {
+            ColorCode::None => Color::White,
+            ColorCode::Low => Color::Green,
+            ColorCode::Medium => Color::Yellow,
+            ColorCode::High => Color::Red,
+        };
+
         Row::new(vec![
             Cell::from(icon),
-            Cell::from(path_line),
-            Cell::from(size).style(Style::default().fg(size_color_code)),
-            Cell::from(last_update).style(Style::default().fg(last_update_color_code)),
-            Cell::from(parent_size).style(Style::default().fg(Color::DarkGray)),
+            Cell::from(main_cell),
+            Cell::from(size_text).style(Style::default().fg(size_color)),
+            Cell::from(last_update_text).style(Style::default().fg(last_update_color)),
+            Cell::from(parent_size_text).style(Style::default().fg(Color::DarkGray)),
         ])
         .style(Style::default().fg(Color::White))
     }
