@@ -355,6 +355,10 @@ mod tests {
         .map(|p| fs::metadata(p).unwrap().len())
         .sum();
         assert_eq!(discovery_results.projects[0].size, dirs_size + 22);
+        assert_eq!(
+            discovery_results.projects[0].parent.as_ref().unwrap().path,
+            root_path.join("projects/python")
+        );
 
         assert_eq!(
             discovery_results.projects[1].path,
@@ -370,6 +374,10 @@ mod tests {
         .map(|p| fs::metadata(p).unwrap().len())
         .sum();
         assert_eq!(discovery_results.projects[1].size, dirs_size + 15);
+        assert_eq!(
+            discovery_results.projects[1].parent.as_ref().unwrap().path,
+            root_path.join("projects/rust")
+        );
 
         // Coming from Default definitions
         assert_eq!(
@@ -380,6 +388,7 @@ mod tests {
         assert_eq!(discovery_results.tools[0].lang, Some(Language::Python));
         let dirs_size = fs::metadata(&root_path.join(".cache/uv")).unwrap().len();
         assert_eq!(discovery_results.tools[0].size, dirs_size + 43);
+        assert!(discovery_results.tools[0].parent.is_none());
 
         // Coming from config - non-discoverable
         assert_eq!(
@@ -390,6 +399,7 @@ mod tests {
         assert_eq!(discovery_results.tools[1].lang, Some(Language::Rust));
         let dirs_size = fs::metadata(&root_path.join("to_sum")).unwrap().len();
         assert_eq!(discovery_results.tools[1].size, dirs_size + 13);
+        assert!(discovery_results.tools[1].parent.is_none());
 
         // Quick check of the most important events collected from progress reporter
         let progress_report = progress.iter().collect::<Vec<_>>();
