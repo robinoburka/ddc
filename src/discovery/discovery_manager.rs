@@ -184,7 +184,11 @@ impl<L: PathLoader> DiscoveryManager<L> {
             let _guard = debug_span!("static_thread").entered();
             for pd in definitions.iter() {
                 if !pd.discovery {
-                    let parent = pd.path.parent().map(|p| p.to_path_buf());
+                    let parent = pd
+                        .path
+                        .parent()
+                        .map(|p| p.to_path_buf())
+                        .filter(|p| db.exists(p));
                     let size = db.iter_dir(&pd.path).filter_map(|fi| fi.size).sum();
                     let last_update = db.iter_dir(&pd.path).filter_map(|fi| fi.touched).max();
                     let r = DiscoveryResult::Tool(ToolingResult {
@@ -257,7 +261,7 @@ fn discovery_thread<D, R>(
             detected_paths.iter().for_each(|p| {
                 let size = db.iter_dir(p).filter_map(|fi| fi.size).sum();
                 let last_update = db.iter_dir(p).filter_map(|fi| fi.touched).max();
-                let parent = p.parent().map(|p| p.to_path_buf());
+                let parent = p.parent().map(|p| p.to_path_buf()).filter(|p| db.exists(p));
                 let r = DiscoveryResult::Project(ProjectResult {
                     lang: D::LANG,
                     path: (*p).clone(),
