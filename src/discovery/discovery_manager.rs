@@ -87,23 +87,11 @@ impl<L: PathLoader> DiscoveryManager<L> {
         let config_definitions = config
             .paths
             .iter()
-            .map(|pd| {
-                let lang = match pd.language.as_ref() {
-                    None => None,
-                    Some(lang) => match Language::try_from(lang) {
-                        Ok(l) => Some(l),
-                        Err(e) => {
-                            warn!("Unknown language definition: {}", e);
-                            None
-                        }
-                    },
-                };
-                DiscoveryDefinition {
-                    lang,
-                    discovery: pd.discovery,
-                    description: pd.name.clone().unwrap_or("Projects".into()),
-                    path: self.home.join(&pd.path),
-                }
+            .map(|pd| DiscoveryDefinition {
+                lang: None,
+                discovery: true,
+                description: "Projects".into(),
+                path: self.home.join(&pd.path),
             })
             .collect::<Vec<_>>();
 
@@ -302,24 +290,11 @@ mod tests {
             "Signature: 8a477f597d28d172789f06886806bc55",
         )
         .unwrap();
-        fs::create_dir_all(root_path.join("to_sum")).unwrap();
-        fs::write(root_path.join("to_sum/foo.txt"), "Hello, World!").unwrap();
 
         let config = Config {
-            paths: vec![
-                PathDefinition {
-                    path: root_path.join("projects").to_path_buf(),
-                    discovery: true,
-                    name: Some(String::from("Projects")),
-                    language: None,
-                },
-                PathDefinition {
-                    path: root_path.join("to_sum").to_path_buf(),
-                    discovery: false,
-                    name: Some(String::from("Just to check")),
-                    language: Some(String::from("rust")),
-                },
-            ],
+            paths: vec![PathDefinition {
+                path: root_path.join("projects").to_path_buf(),
+            }],
         };
 
         let discovery_manager = DiscoveryManager::new(root_path).add_from_config(&config);
@@ -330,7 +305,7 @@ mod tests {
         discovery_results.tools.sort_by_key(|r| r.path.clone());
 
         assert_eq!(discovery_results.projects.len(), 2);
-        assert_eq!(discovery_results.tools.len(), 2);
+        assert_eq!(discovery_results.tools.len(), 1);
 
         // Coming from config - discovery
         assert_eq!(
@@ -379,16 +354,6 @@ mod tests {
         assert_eq!(discovery_results.tools[0].lang, Some(Language::Python));
         let dirs_size = fs::metadata(&root_path.join(".cache/uv")).unwrap().len();
         assert_eq!(discovery_results.tools[0].size, dirs_size + 43);
-
-        // Coming from config - non-discoverable
-        assert_eq!(
-            discovery_results.tools[1].description,
-            String::from("Just to check")
-        );
-        assert_eq!(discovery_results.tools[1].path, root_path.join("to_sum"));
-        assert_eq!(discovery_results.tools[1].lang, Some(Language::Rust));
-        let dirs_size = fs::metadata(&root_path.join("to_sum")).unwrap().len();
-        assert_eq!(discovery_results.tools[1].size, dirs_size + 13);
 
         // Quick check of the most important events collected from progress reporter
         let progress_report = progress.iter().collect::<Vec<_>>();

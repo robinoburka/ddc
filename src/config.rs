@@ -7,12 +7,6 @@ use tracing::{debug, error};
 #[derive(Debug, Deserialize)]
 pub struct PathDefinition {
     pub path: PathBuf,
-    #[serde(default)]
-    pub discovery: bool,
-    #[serde(default)]
-    pub name: Option<String>,
-    #[serde(default)]
-    pub language: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
