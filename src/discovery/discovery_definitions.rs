@@ -27,7 +27,6 @@ pub struct ToolingResult {
     pub lang: Option<Language>,
     pub size: u64,
     pub last_update: Option<SystemTime>,
-    pub parent: Option<ParentInfo>,
 }
 
 #[derive(Clone, Debug)]

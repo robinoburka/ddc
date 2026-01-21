@@ -308,8 +308,8 @@ impl App {
                     Some(Tab::Tooling(tab)) => tab
                         .results
                         .get(tab.current_item)
-                        .and_then(|r| r.parent.as_ref())
-                        .map(|p| p.path.clone()),
+                        .and_then(|r| r.path.parent())
+                        .map(PathBuf::from),
                     None => None,
                 };
 
