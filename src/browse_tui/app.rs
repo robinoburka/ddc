@@ -691,42 +691,11 @@ impl App {
         area: Rect,
         projects_tab: &ResultsTab<ProjectResult>,
     ) {
-        self.render_results(
-            frame,
-            area,
-            projects_tab,
-            " Projects ",
-            "Project",
-            Self::create_project_row,
-        );
-    }
-
-    fn render_tooling(
-        &self,
-        frame: &mut Frame,
-        area: Rect,
-        tooling_tab: &ResultsTab<ToolingResult>,
-    ) {
-        self.render_results(
-            frame,
-            area,
-            tooling_tab,
-            " Tools ",
-            "Tool",
-            Self::create_tooling_row,
-        );
-    }
-
-    fn render_results<'a, T>(
-        &'a self,
-        frame: &mut Frame,
-        area: Rect,
-        tab: &'a ResultsTab<T>,
-        title: &str,
-        header: &str,
-        row_fn: impl Fn(&'a Self, &'a T) -> Row<'a>,
-    ) {
-        let rows: Vec<_> = tab.results.iter().map(|r| row_fn(self, r)).collect();
+        let rows: Vec<_> = projects_tab
+            .results
+            .iter()
+            .map(|r| self.create_project_row(r))
+            .collect();
 
         let table = Table::new(
             rows,
@@ -739,7 +708,7 @@ impl App {
             ],
         )
         .header(
-            Row::new(["", header, "Size", "Last update", "Parent size"]).style(
+            Row::new(["", "Project", "Size", "Last update", "Parent size"]).style(
                 Style::default()
                     .fg(Color::Blue)
                     .add_modifier(Modifier::BOLD),
@@ -748,7 +717,7 @@ impl App {
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .title(title)
+                .title(" Projects ")
                 .style(Style::default().fg(Color::LightYellow)),
         )
         .row_highlight_style(
@@ -760,89 +729,88 @@ impl App {
         .highlight_symbol("► ");
 
         let mut table_state = TableState::default();
-        table_state.select(Some(tab.current_item));
+        table_state.select(Some(projects_tab.current_item));
 
         frame.render_stateful_widget(table, area, &mut table_state);
     }
 
     fn create_project_row<'a>(&self, result: &'a ProjectResult) -> Row<'a> {
-        let icon = format!("{} ", result.lang);
+        Row::new(vec![
+            Cell::from(format!("{} ", result.lang)),
+            Cell::from(Line::from(result.path.display().to_string())),
+            size_cell(result.size),
+            last_update_cell(self.now, result.last_update),
+            parent_size_cell(result.parent.as_ref().map(|p| p.size)),
+        ])
+        .style(Style::default().fg(Color::White))
+    }
 
-        let main_cell = Line::from(vec![Span::raw(result.path.display().to_string())]);
+    fn render_tooling(
+        &self,
+        frame: &mut Frame,
+        area: Rect,
+        tooling_tab: &ResultsTab<ToolingResult>,
+    ) {
+        let rows: Vec<_> = tooling_tab
+            .results
+            .iter()
+            .map(|r| self.create_tooling_row(r))
+            .collect();
 
-        self.create_result_row(
-            icon,
-            main_cell,
-            result.size,
-            result.parent.as_ref().map(|p| p.size),
-            result.last_update,
+        let table = Table::new(
+            rows,
+            [
+                Constraint::Length(3),
+                Constraint::Percentage(60),
+                Constraint::Length(10),
+                Constraint::Length(20),
+            ],
         )
+        .header(
+            Row::new(["", "Tool", "Size", "Last update"]).style(
+                Style::default()
+                    .fg(Color::Blue)
+                    .add_modifier(Modifier::BOLD),
+            ),
+        )
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(" Tools ")
+                .style(Style::default().fg(Color::LightYellow)),
+        )
+        .row_highlight_style(
+            Style::default()
+                .bg(Color::Blue)
+                .fg(Color::White)
+                .add_modifier(Modifier::BOLD),
+        )
+        .highlight_symbol("► ");
+
+        let mut table_state = TableState::default();
+        table_state.select(Some(tooling_tab.current_item));
+
+        frame.render_stateful_widget(table, area, &mut table_state);
     }
 
     fn create_tooling_row<'a>(&self, result: &'a ToolingResult) -> Row<'a> {
-        let icon = result
-            .lang
-            .as_ref()
-            .map(|l| format!("{} ", l))
-            .unwrap_or_else(|| " ".to_string());
-
-        let main_cell = Line::from(vec![
-            Span::raw(&result.description),
-            Span::styled(
-                format!(" ({})", result.path.display()),
-                Style::default().fg(Color::DarkGray),
-            ),
-        ]);
-
-        self.create_result_row(
-            icon,
-            main_cell,
-            result.size,
-            result.parent.as_ref().map(|p| p.size),
-            result.last_update,
-        )
-    }
-
-    fn create_result_row<'a>(
-        &self,
-        icon: String,
-        main_cell: Line<'a>,
-        size: u64,
-        parent_size: Option<u64>,
-        last_update: Option<SystemTime>,
-    ) -> Row<'a> {
-        let size_text = format_size(size, DECIMAL);
-        let size_color = match get_size_color_code(size) {
-            ColorCode::None => Color::White,
-            ColorCode::Low => Color::Green,
-            ColorCode::Medium => Color::Yellow,
-            ColorCode::High => Color::Red,
-        };
-
-        let parent_size_text = parent_size
-            .map(|s| format_size(s, DECIMAL))
-            .unwrap_or_default();
-
-        let last_update_text = last_update
-            .map(|t| {
-                DateTime::<Local>::from(t)
-                    .format("%Y-%m-%d %H:%M:%S")
-                    .to_string()
-            })
-            .unwrap_or_default();
-        let last_update_color = match get_time_color_code(&self.now, &last_update) {
-            ColorCode::None => Color::White,
-            ColorCode::Low => Color::Green,
-            ColorCode::Medium => Color::Yellow,
-            ColorCode::High => Color::Red,
-        };
-
         Row::new(vec![
-            Cell::from(icon),
-            Cell::from(main_cell),
-            Cell::from(size_text).style(Style::default().fg(size_color)),
-            Cell::from(last_update_text).style(Style::default().fg(last_update_color)),
-            Cell::from(parent_size_text).style(Style::default().fg(Color::DarkGray)),
+            Cell::from(
+                result
+                    .lang
+                    .as_ref()
+                    .map(|l| format!("{} ", l))
+                    .unwrap_or_else(|| " ".to_string()),
+            ),
+            Cell::from(Line::from(vec![
+                Span::raw(&result.description),
+                Span::styled(
+                    format!(" ({})", result.path.display()),
+                    Style::default().fg(Color::DarkGray),
+                ),
+            ])),
+            size_cell(result.size),
+            last_update_cell(self.now, result.last_update),
         ])
         .style(Style::default().fg(Color::White))
     }
@@ -912,4 +880,43 @@ fn popup_area(area: Rect, percent_x: u16, percent_y: u16) -> Rect {
     let [area] = vertical.areas(area);
     let [area] = horizontal.areas(area);
     area
+}
+
+fn size_cell(size: u64) -> Cell<'static> {
+    let text = format_size(size, DECIMAL);
+    let color = match get_size_color_code(size) {
+        ColorCode::None => Color::White,
+        ColorCode::Low => Color::Green,
+        ColorCode::Medium => Color::Yellow,
+        ColorCode::High => Color::Red,
+    };
+
+    Cell::from(text).style(Style::default().fg(color))
+}
+
+fn last_update_cell(now: SystemTime, last: Option<SystemTime>) -> Cell<'static> {
+    let text = last
+        .map(|t| {
+            DateTime::<Local>::from(t)
+                .format("%Y-%m-%d %H:%M:%S")
+                .to_string()
+        })
+        .unwrap_or_default();
+
+    let color = match get_time_color_code(&now, &last) {
+        ColorCode::None => Color::White,
+        ColorCode::Low => Color::Green,
+        ColorCode::Medium => Color::Yellow,
+        ColorCode::High => Color::Red,
+    };
+
+    Cell::from(text).style(Style::default().fg(color))
+}
+
+fn parent_size_cell(parent_size: Option<u64>) -> Cell<'static> {
+    let text = parent_size
+        .map(|s| format_size(s, DECIMAL))
+        .unwrap_or_default();
+
+    Cell::from(text).style(Style::default().fg(Color::DarkGray))
 }
