@@ -358,7 +358,7 @@ mod tests {
             String::from("uv cache")
         );
         assert_eq!(discovery_results.tools[0].path, root_path.join(".cache/uv"));
-        assert_eq!(discovery_results.tools[0].lang, Some(Language::Python));
+        assert_eq!(discovery_results.tools[0].lang, Language::Python);
         let dirs_size = fs::metadata(&root_path.join(".cache/uv")).unwrap().len();
         assert_eq!(discovery_results.tools[0].size, dirs_size + 43);
 

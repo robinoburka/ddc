@@ -9,7 +9,7 @@ pub fn default_discovery_definitions(home: &Path) -> Vec<DiscoveryDefinition> {
         ////////////////////////////////////////
         // Cargo registry
         DiscoveryDefinition {
-            lang: Some(Language::Rust),
+            lang: Language::Rust,
             discovery: false,
             description: "Cargo registry".into(),
             path: ".cargo/registry".into(),
@@ -18,42 +18,42 @@ pub fn default_discovery_definitions(home: &Path) -> Vec<DiscoveryDefinition> {
         ////////////////////////////////////////
         // Poetry on macOS - cache
         DiscoveryDefinition {
-            lang: Some(Language::Python),
+            lang: Language::Python,
             discovery: false,
             description: "Poetry cache".into(),
             path: "Library/Caches/pypoetry".into(),
         },
         // Poetry on macOS - default virtualenvs
         DiscoveryDefinition {
-            lang: Some(Language::Python),
+            lang: Language::Python,
             discovery: true,
             description: "Poetry virtualenvs".into(),
             path: "Library/Caches/pypoetry/virtualenvs".into(),
         },
         // Poetry on Unix - cache
         DiscoveryDefinition {
-            lang: Some(Language::Python),
+            lang: Language::Python,
             discovery: false,
             description: "Poetry cache".into(),
             path: ".cache/pypoetry".into(),
         },
         // Poetry on Unix - default virtualenvs
         DiscoveryDefinition {
-            lang: Some(Language::Python),
+            lang: Language::Python,
             discovery: true,
             description: "Poetry virtualenvs".into(),
             path: ".cache/pypoetry/virtualenvs".into(),
         },
         // uv on Linux/macOS - cache
         DiscoveryDefinition {
-            lang: Some(Language::Python),
+            lang: Language::Python,
             discovery: false,
             description: "uv cache".into(),
             path: ".cache/uv".into(),
         },
         // uv alternative Python installation directory
         DiscoveryDefinition {
-            lang: Some(Language::Python),
+            lang: Language::Python,
             discovery: false,
             description: "uv Python downloads".into(),
             path: ".local/share/uv/python".into(),
@@ -62,7 +62,7 @@ pub fn default_discovery_definitions(home: &Path) -> Vec<DiscoveryDefinition> {
         ////////////////////////////////////////
         // npm - cache
         DiscoveryDefinition {
-            lang: Some(Language::JS),
+            lang: Language::JS,
             discovery: false,
             description: "NPM cache".into(),
             path: ".npm".into(),
@@ -89,16 +89,6 @@ mod tests {
 
         for def in definitions {
             assert_eq!(def.path.starts_with("/home/foo"), true);
-        }
-    }
-
-    #[test]
-    fn test_all_definitions_has_language() {
-        let home_path = PathBuf::from("/home/foo");
-        let definitions = default_discovery_definitions(&home_path);
-
-        for def in definitions {
-            assert_ne!(def.lang, None);
         }
     }
 }

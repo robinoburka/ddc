@@ -68,7 +68,7 @@ fn show_default_definitions_inner<W: Write>(out: &mut W, home: &Path) {
             writeln!(
                 out,
                 "{} {} ({}): {}",
-                definition.lang.map(|l| l.to_string()).unwrap_or_default(),
+                definition.lang,
                 definition.description.bold(),
                 if definition.discovery { "🔭" } else { "🧰" },
                 definition.path.display().dimmed()
