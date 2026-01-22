@@ -35,6 +35,7 @@ enum UiMode {
     #[default]
     Normal,
     Help,
+    InfoWindow
 }
 
 #[derive(PartialEq)]
@@ -53,6 +54,7 @@ enum Message {
     EnterParent,
     Help,
     Close,
+    Info,
 }
 
 enum Navigation {
@@ -146,6 +148,7 @@ impl App {
                                 Some(Message::SelectTab(TOOLING_TAB))
                             }
                             KeyCode::Char('?') => Some(Message::Help),
+                            KeyCode::Char('i') => Some(Message::Info),
                             KeyCode::Esc => Some(Message::Close),
                             _ => None,
                         });
@@ -179,12 +182,19 @@ impl App {
                 Message::EnterParent => self.enter_parent(),
                 Message::SelectTab(tab) => self.select_tab(tab),
                 Message::Help => self.help(),
+                Message::Info => self.info(),
                 _ => {}
             },
             UiMode::Help => match msg {
                 Message::Refresh => {}
                 Message::Quit => self.quit(),
                 Message::Help => self.help(),
+                Message::Close => self.close(),
+                _ => {}
+            },
+            UiMode::InfoWindow => match msg {
+                Message::Refresh => {}
+                Message::Quit => self.quit(),
                 Message::Close => self.close(),
                 _ => {}
             },
@@ -355,7 +365,16 @@ impl App {
         self.mode = match self.mode {
             UiMode::Normal => UiMode::Help,
             UiMode::Help => UiMode::Normal,
+            _ => UiMode::Normal,
         };
+    }
+
+    fn info(&mut self) {
+        if let Some(Tab::Tooling(tab)) = self.tabs.get(self.selected_tab) && self.browser.frames.is_empty() && tab.results[tab.current_item].info.is_some() {
+                self.mode = UiMode::InfoWindow;
+        } else {
+            self.error_message = Some(String::from("There is no info for this item."))
+        }
     }
 
     fn close(&mut self) {
@@ -386,6 +405,9 @@ impl App {
         self.render_footer(frame, chunks[2]);
         if self.mode == UiMode::Help {
             self.render_help_popup(frame, chunks[1]);
+        }
+        if self.mode == UiMode::InfoWindow {
+            self.render_info_window(frame, chunks[1]);
         }
     }
 
@@ -685,6 +707,35 @@ impl App {
         frame.render_widget(help, area);
     }
 
+    fn render_info_window(&self, frame: &mut Frame, area: Rect) {
+        let area = popup_area(area, 80, 60);
+
+        let msg = if let Some(Tab::Tooling(tab)) = self.tabs.get(self.selected_tab) && let Some(ref info_msg) = tab.results[tab.current_item].info {
+            info_msg.as_str()
+        } else {
+            ""
+        };
+
+        let help = Paragraph::new(vec![Line::from(msg)])
+            .style(Style::default().fg(Color::White))
+            .block(
+                Block::bordered()
+                    .style(Style::default().fg(Color::LightBlue))
+                    .padding(Padding::symmetric(2, 1))
+                    .title(Line::from(" Info ").alignment(Alignment::Left))
+                    .title(
+                        Line::from(" Esc ").alignment(Alignment::Right).style(
+                            Style::default()
+                                .fg(Color::Red)
+                                .add_modifier(Modifier::ITALIC),
+                        ),
+                    ),
+            );
+
+        frame.render_widget(Clear, area);
+        frame.render_widget(help, area);
+    }
+
     fn render_projects(
         &self,
         frame: &mut Frame,
@@ -802,6 +853,7 @@ impl App {
                     format!(" ({})", result.path.display()),
                     Style::default().fg(Color::DarkGray),
                 ),
+                Span::raw(if result.info.is_some() { " 💡" } else { "" }),
             ])),
             size_cell(result.size),
             last_update_cell(self.now, result.last_update),

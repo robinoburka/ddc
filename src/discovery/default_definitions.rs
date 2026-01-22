@@ -13,6 +13,7 @@ pub fn default_discovery_definitions(home: &Path) -> Vec<DiscoveryDefinition> {
             discovery: false,
             description: "Cargo registry".into(),
             path: ".cargo/registry".into(),
+            info: Some("Some random example text".into()),
         },
         // Python
         ////////////////////////////////////////
@@ -22,6 +23,7 @@ pub fn default_discovery_definitions(home: &Path) -> Vec<DiscoveryDefinition> {
             discovery: false,
             description: "Poetry cache".into(),
             path: "Library/Caches/pypoetry".into(),
+            ..Default::default()
         },
         // Poetry on macOS - default virtualenvs
         DiscoveryDefinition {
@@ -29,6 +31,7 @@ pub fn default_discovery_definitions(home: &Path) -> Vec<DiscoveryDefinition> {
             discovery: true,
             description: "Poetry virtualenvs".into(),
             path: "Library/Caches/pypoetry/virtualenvs".into(),
+            ..Default::default()
         },
         // Poetry on Unix - cache
         DiscoveryDefinition {
@@ -36,6 +39,7 @@ pub fn default_discovery_definitions(home: &Path) -> Vec<DiscoveryDefinition> {
             discovery: false,
             description: "Poetry cache".into(),
             path: ".cache/pypoetry".into(),
+            ..Default::default()
         },
         // Poetry on Unix - default virtualenvs
         DiscoveryDefinition {
@@ -43,6 +47,7 @@ pub fn default_discovery_definitions(home: &Path) -> Vec<DiscoveryDefinition> {
             discovery: true,
             description: "Poetry virtualenvs".into(),
             path: ".cache/pypoetry/virtualenvs".into(),
+            ..Default::default()
         },
         // uv on Linux/macOS - cache
         DiscoveryDefinition {
@@ -50,6 +55,7 @@ pub fn default_discovery_definitions(home: &Path) -> Vec<DiscoveryDefinition> {
             discovery: false,
             description: "uv cache".into(),
             path: ".cache/uv".into(),
+            ..Default::default()
         },
         // uv alternative Python installation directory
         DiscoveryDefinition {
@@ -57,6 +63,7 @@ pub fn default_discovery_definitions(home: &Path) -> Vec<DiscoveryDefinition> {
             discovery: false,
             description: "uv Python downloads".into(),
             path: ".local/share/uv/python".into(),
+            ..Default::default()
         },
         // JavaScript
         ////////////////////////////////////////
@@ -66,6 +73,7 @@ pub fn default_discovery_definitions(home: &Path) -> Vec<DiscoveryDefinition> {
             discovery: false,
             description: "NPM cache".into(),
             path: ".npm".into(),
+            ..Default::default()
         },
     ];
 

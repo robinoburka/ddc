@@ -8,12 +8,13 @@ pub(super) enum DiscoveryDefinitionType {
     External(ExternalDiscoveryDefinition),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct DiscoveryDefinition {
     pub path: PathBuf,
     pub discovery: bool,
     pub description: String,
     pub lang: Language,
+    pub info: Option<String>,
 }
 
 #[derive(Debug)]

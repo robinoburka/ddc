@@ -27,6 +27,7 @@ pub struct ToolingResult {
     pub lang: Language,
     pub size: u64,
     pub last_update: Option<SystemTime>,
+    pub info: Option<String>,
 }
 
 #[derive(Clone, Debug)]

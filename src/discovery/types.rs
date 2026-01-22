@@ -6,8 +6,10 @@ pub enum TypesError {
     UnknownLanguage(String),
 }
 
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, Default, PartialEq)]
 pub enum Language {
+    // This is just a formality
+    #[default]
     Python,
     Rust,
     JS,
