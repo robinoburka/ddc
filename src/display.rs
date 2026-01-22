@@ -66,8 +66,8 @@ pub fn print_results<W: Write>(out: &mut W, discovery_results: DiscoveryResults)
 
 #[derive(Tabled)]
 struct Record {
-    #[tabled(rename = "Lang", display("tabled::derive::display::option", ""))]
-    lang: Option<String>,
+    #[tabled(rename = "Lang")]
+    lang: String,
     #[tabled(rename = "Path")]
     path: String,
     #[tabled(rename = "Last change", display("tabled::derive::display::option", ""))]
@@ -91,7 +91,7 @@ struct ToolingRecord {
 impl From<&ProjectResult> for Record {
     fn from(value: &ProjectResult) -> Self {
         Self {
-            lang: Some(value.lang.to_string()),
+            lang: value.lang.to_string(),
             time: value.last_update,
             human_time: value.last_update.map(|t| {
                 DateTime::<Local>::from(t)
@@ -110,7 +110,7 @@ impl From<&ToolingResult> for ToolingRecord {
         Self {
             description: value.description.clone(),
             record: Record {
-                lang: value.lang.map(|l| l.to_string()),
+                lang: value.lang.to_string(),
                 time: value.last_update,
                 human_time: value.last_update.map(|t| {
                     DateTime::<Local>::from(t)

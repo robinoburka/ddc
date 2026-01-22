@@ -13,7 +13,7 @@ pub struct DiscoveryDefinition {
     pub path: PathBuf,
     pub discovery: bool,
     pub description: String,
-    pub lang: Option<Language>,
+    pub lang: Language,
 }
 
 #[derive(Debug)]

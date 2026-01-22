@@ -24,7 +24,7 @@ pub struct ProjectResult {
 pub struct ToolingResult {
     pub description: String,
     pub path: PathBuf,
-    pub lang: Option<Language>,
+    pub lang: Language,
     pub size: u64,
     pub last_update: Option<SystemTime>,
 }

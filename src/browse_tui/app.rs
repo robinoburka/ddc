@@ -795,13 +795,7 @@ impl App {
 
     fn create_tooling_row<'a>(&self, result: &'a ToolingResult) -> Row<'a> {
         Row::new(vec![
-            Cell::from(
-                result
-                    .lang
-                    .as_ref()
-                    .map(|l| format!("{} ", l))
-                    .unwrap_or_else(|| " ".to_string()),
-            ),
+            Cell::from(format!("{} ", result.lang)),
             Cell::from(Line::from(vec![
                 Span::raw(&result.description),
                 Span::styled(
