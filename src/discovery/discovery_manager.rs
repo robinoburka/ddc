@@ -6,17 +6,17 @@ use crossbeam::channel;
 use crossbeam::channel::{Receiver, Sender};
 use tracing::{debug_span, instrument, warn};
 
-use crate::config::Config;
-use crate::discovery::DiscoveryDefinition;
+use crate::discovery::ExternalDiscoveryDefinition;
+use crate::discovery::Language;
 use crate::discovery::default_definitions::default_discovery_definitions;
 use crate::discovery::detectors::{JsNpmDetector, PythonVenvDetector, RustBuildDirDetector};
-use crate::discovery::discovery_definitions::{
-    DiscoveryResults, ParentInfo, ProjectResult, ToolingResult,
-};
+use crate::discovery::discovery_definitions::DiscoveryDefinitionType;
 use crate::discovery::progress::{ProgressEvent, ProgressReporter};
+use crate::discovery::results::{
+    DiscoveryResultEnvelop, DiscoveryResults, ParentInfo, ProjectResult, ToolingResult,
+};
 use crate::files_db::FilesDB;
 use crate::loader::FullyParallelLoader;
-use crate::types::Language;
 
 pub trait PathLoader: Default {
     fn load_multiple_paths<R: ProgressReporter>(
@@ -52,15 +52,9 @@ pub struct DiscoveryManager<L: PathLoader = FullyParallelLoader> {
     home: PathBuf,
     loader: L,
     db: Arc<FilesDB>,
-    definitions: Arc<Vec<DiscoveryDefinition>>,
+    definitions: Arc<Vec<DiscoveryDefinitionType>>,
     progress_tx: Sender<ProgressEvent>,
     progress_rx: Receiver<ProgressEvent>,
-}
-
-#[derive(Debug)]
-enum DiscoveryResult {
-    Project(ProjectResult),
-    Tool(ToolingResult),
 }
 
 impl DiscoveryManager {
@@ -77,27 +71,30 @@ impl<L: PathLoader> DiscoveryManager<L> {
             home: home.to_path_buf(),
             loader,
             db: Arc::new(FilesDB::new()),
-            definitions: Arc::new(default_discovery_definitions(home)),
+            definitions: Arc::new(
+                default_discovery_definitions(home)
+                    .into_iter()
+                    .map(DiscoveryDefinitionType::BuildIn)
+                    .collect(),
+            ),
             progress_tx,
             progress_rx,
         }
     }
 
-    pub fn add_from_config(mut self, config: &Config) -> Self {
-        let config_definitions = config
-            .paths
+    pub fn add_definitions(mut self, definitions: &[ExternalDiscoveryDefinition]) -> Self {
+        let new_definitions = definitions
             .iter()
-            .map(|pd| DiscoveryDefinition {
-                lang: None,
-                discovery: true,
-                description: "Projects".into(),
-                path: self.home.join(&pd.path),
+            .map(|ed| {
+                DiscoveryDefinitionType::External(ExternalDiscoveryDefinition {
+                    path: self.home.join(&ed.path),
+                })
             })
             .collect::<Vec<_>>();
 
         self.definitions = Arc::try_unwrap(self.definitions)
             .map(|mut inner| {
-                inner.extend(config_definitions);
+                inner.extend(new_definitions);
                 Arc::new(inner)
             })
             .expect("Arc is still shared. Programmer error?");
@@ -129,7 +126,10 @@ impl<L: PathLoader> DiscoveryManager<L> {
         let paths = self
             .definitions
             .iter()
-            .map(|def| def.path.clone())
+            .map(|def| match def {
+                DiscoveryDefinitionType::BuildIn(dd) => dd.path.clone(),
+                DiscoveryDefinitionType::External(ed) => ed.path.clone(),
+            })
             .collect::<Vec<_>>();
         let reporter = self.create_reporter();
         self.db = Arc::new(self.loader.load_multiple_paths(&paths, Some(reporter)));
@@ -170,14 +170,16 @@ impl<L: PathLoader> DiscoveryManager<L> {
         let thread_reporter = reporter.clone();
         rayon::spawn(move || {
             let _guard = debug_span!("static_thread").entered();
-            for pd in definitions.iter() {
-                if !pd.discovery {
-                    let size = db.iter_dir(&pd.path).filter_map(|fi| fi.size).sum();
-                    let last_update = db.iter_dir(&pd.path).filter_map(|fi| fi.touched).max();
-                    let r = DiscoveryResult::Tool(ToolingResult {
-                        description: pd.description.clone(),
-                        lang: pd.lang,
-                        path: pd.path.clone(),
+            for definition in definitions.iter() {
+                if let DiscoveryDefinitionType::BuildIn(dd) = definition
+                    && !dd.discovery
+                {
+                    let size = db.iter_dir(&dd.path).filter_map(|fi| fi.size).sum();
+                    let last_update = db.iter_dir(&dd.path).filter_map(|fi| fi.touched).max();
+                    let r = DiscoveryResultEnvelop::Tool(ToolingResult {
+                        description: dd.description.clone(),
+                        lang: dd.lang,
+                        path: dd.path.clone(),
                         last_update,
                         size,
                     });
@@ -189,8 +191,8 @@ impl<L: PathLoader> DiscoveryManager<L> {
 
         for res in rx.iter() {
             match res {
-                DiscoveryResult::Project(r) => project_results.push(r),
-                DiscoveryResult::Tool(r) => {
+                DiscoveryResultEnvelop::Project(r) => project_results.push(r),
+                DiscoveryResultEnvelop::Tool(r) => {
                     if r.size > 0 {
                         tooling_results.push(r)
                     }
@@ -206,9 +208,9 @@ impl<L: PathLoader> DiscoveryManager<L> {
 
 fn spawn_discovery_thread<D, R>(
     db: Arc<FilesDB>,
-    definitions: Arc<Vec<DiscoveryDefinition>>,
+    definitions: Arc<Vec<DiscoveryDefinitionType>>,
     detector: D,
-    tx: Sender<DiscoveryResult>,
+    tx: Sender<DiscoveryResultEnvelop>,
     progress: R,
 ) where
     D: DynamicDetector,
@@ -222,38 +224,45 @@ fn spawn_discovery_thread<D, R>(
 
 fn discovery_thread<D, R>(
     db: Arc<FilesDB>,
-    discovery_definitions: Arc<Vec<DiscoveryDefinition>>,
+    discovery_definitions: Arc<Vec<DiscoveryDefinitionType>>,
     detector: D,
-    tx: Sender<DiscoveryResult>,
+    tx: Sender<DiscoveryResultEnvelop>,
     progress: R,
 ) where
     D: DynamicDetector,
     R: ProgressReporter,
 {
     for definition in discovery_definitions.iter() {
-        if definition.discovery {
-            let detected_paths: Vec<&PathBuf> = db
-                .iter_directories(&definition.path)
-                .filter(|fi| detector.detect(db.deref(), fi.path))
-                .map(|fi| fi.path)
-                .collect();
-            detected_paths.iter().for_each(|p| {
-                let size = db.iter_dir(p).filter_map(|fi| fi.size).sum();
-                let last_update = db.iter_dir(p).filter_map(|fi| fi.touched).max();
-                let parent = p.parent().map(|p| p.to_path_buf()).filter(|p| db.exists(p));
-                let r = DiscoveryResult::Project(ProjectResult {
-                    lang: D::LANG,
-                    path: (*p).clone(),
-                    last_update,
-                    size,
-                    parent: parent.map(|parent_path| ParentInfo {
-                        size: db.iter_dir(&parent_path).filter_map(|fi| fi.size).sum(),
-                        path: parent_path,
-                    }),
-                });
-                tx.send(r).unwrap();
-            });
+        if let DiscoveryDefinitionType::BuildIn(dd) = definition
+            && !dd.discovery
+        {
+            continue;
         }
+        let path_to_detect = match definition {
+            DiscoveryDefinitionType::BuildIn(dd) => &dd.path,
+            DiscoveryDefinitionType::External(ed) => &ed.path,
+        };
+        let detected_paths: Vec<&PathBuf> = db
+            .iter_directories(path_to_detect)
+            .filter(|fi| detector.detect(db.deref(), fi.path))
+            .map(|fi| fi.path)
+            .collect();
+        detected_paths.iter().for_each(|p| {
+            let size = db.iter_dir(p).filter_map(|fi| fi.size).sum();
+            let last_update = db.iter_dir(p).filter_map(|fi| fi.touched).max();
+            let parent = p.parent().map(|p| p.to_path_buf()).filter(|p| db.exists(p));
+            let r = DiscoveryResultEnvelop::Project(ProjectResult {
+                lang: D::LANG,
+                path: (*p).clone(),
+                last_update,
+                size,
+                parent: parent.map(|parent_path| ParentInfo {
+                    size: db.iter_dir(&parent_path).filter_map(|fi| fi.size).sum(),
+                    path: parent_path,
+                }),
+            });
+            tx.send(r).unwrap();
+        });
     }
     progress.report(ProgressEvent::DiscoveryAdvance);
 }
@@ -266,7 +275,6 @@ mod tests {
     use tempfile::tempdir;
 
     use super::*;
-    use crate::config::PathDefinition;
 
     #[test]
     fn test_discovery_manager() {
@@ -291,13 +299,12 @@ mod tests {
         )
         .unwrap();
 
-        let config = Config {
-            paths: vec![PathDefinition {
-                path: root_path.join("projects").to_path_buf(),
-            }],
-        };
+        let definitions = vec![ExternalDiscoveryDefinition {
+            path: root_path.join("projects").to_path_buf(),
+        }];
+        let count_of_provided_definitions = definitions.len();
 
-        let discovery_manager = DiscoveryManager::new(root_path).add_from_config(&config);
+        let discovery_manager = DiscoveryManager::new(root_path).add_definitions(&definitions);
         let progress = discovery_manager.subscribe();
         let mut discovery_results = discovery_manager.collect();
 
@@ -358,7 +365,7 @@ mod tests {
         // Quick check of the most important events collected from progress reporter
         let progress_report = progress.iter().collect::<Vec<_>>();
         assert!(progress_report.contains(&ProgressEvent::WalkStart {
-            count: config.paths.len() + default_discovery_definitions(root_path).len()
+            count: count_of_provided_definitions + default_discovery_definitions(root_path).len()
         }));
         // 2 files in projects/ mocked path
         assert!(progress_report.contains(&ProgressEvent::WalkAddPaths { count: 2 }));

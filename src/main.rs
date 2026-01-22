@@ -25,7 +25,6 @@ mod files_db;
 mod generate_config;
 mod loader;
 mod logging;
-mod types;
 
 fn main() -> anyhow::Result<()> {
     let args = Args::parse();

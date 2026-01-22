@@ -6,7 +6,9 @@ use tracing::error;
 
 use crate::cli::UiConfig;
 use crate::config::{ConfigError, load_config_file};
-use crate::discovery::{DiscoveryManager, default_discovery_definitions};
+use crate::discovery::{
+    DiscoveryManager, ExternalDiscoveryDefinition, default_discovery_definitions,
+};
 use crate::display::{display_progress_bar, print_results};
 
 #[derive(thiserror::Error, Debug)]
@@ -30,8 +32,13 @@ fn analyze_inner<W: Write>(
     home_dir: &Path,
 ) -> Result<(), AnalyzeError> {
     let config = load_config_file(home_dir)?;
+    let definitions = config
+        .paths
+        .into_iter()
+        .map(|p| ExternalDiscoveryDefinition { path: p.path })
+        .collect::<Vec<_>>();
 
-    let discovery_manager = DiscoveryManager::new(home_dir).add_from_config(&config);
+    let discovery_manager = DiscoveryManager::new(home_dir).add_definitions(&definitions);
 
     if ui_config.show_progress {
         let progress_channel = discovery_manager.subscribe();

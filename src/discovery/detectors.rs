@@ -1,8 +1,8 @@
 use std::path::Path;
 
+use crate::discovery::Language;
 use crate::discovery::discovery_manager::DynamicDetector;
 use crate::files_db::FilesDB;
-use crate::types::Language;
 
 #[derive(Default)]
 pub struct PythonVenvDetector;

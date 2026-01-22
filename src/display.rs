@@ -10,7 +10,8 @@ use tabled::settings::{Alignment, Color, Modify, Panel, Style, object::Cell};
 use tabled::{Table, Tabled};
 use tracing::instrument;
 
-use crate::discovery::{DiscoveryResults, ProgressEvent, ProjectResult, ToolingResult};
+use crate::discovery::ProgressEvent;
+use crate::discovery::{DiscoveryResults, ProjectResult, ToolingResult};
 use crate::display_tools::{ColorCode, get_size_color_code, get_time_color_code};
 
 #[instrument(level = "debug", skip(out, discovery_results))]

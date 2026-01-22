@@ -7,7 +7,8 @@ use tracing::error;
 use crate::browse_tui::App;
 use crate::cli::UiConfig;
 use crate::config::{ConfigError, load_config_file};
-use crate::discovery::{DiscoveryManager, DiscoveryResults};
+use crate::discovery::DiscoveryResults;
+use crate::discovery::{DiscoveryManager, ExternalDiscoveryDefinition};
 use crate::display::display_progress_bar;
 
 #[derive(thiserror::Error, Debug)]
@@ -32,8 +33,13 @@ pub enum BrowseError {
 
 pub fn browse(ui_config: &UiConfig, home_dir: &Path) -> Result<(), BrowseError> {
     let config = load_config_file(home_dir)?;
+    let definitions = config
+        .paths
+        .into_iter()
+        .map(|p| ExternalDiscoveryDefinition { path: p.path })
+        .collect::<Vec<_>>();
 
-    let discovery_manager = DiscoveryManager::new(home_dir).add_from_config(&config);
+    let discovery_manager = DiscoveryManager::new(home_dir).add_definitions(&definitions);
 
     let wg = WaitGroup::new();
     if ui_config.show_progress {

@@ -1,7 +1,7 @@
 use std::path::Path;
 
-use crate::discovery::DiscoveryDefinition;
-use crate::types::Language;
+use crate::discovery::Language;
+use crate::discovery::discovery_definitions::DiscoveryDefinition;
 
 pub fn default_discovery_definitions(home: &Path) -> Vec<DiscoveryDefinition> {
     let mut definitions = vec![
