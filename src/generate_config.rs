@@ -85,7 +85,7 @@ impl GenerateConfigInteraction for DialoguerInteraction {
         let selection = Select::with_theme(&ColorfulTheme::default())
             .with_prompt("Select preferred location for the configuration file:")
             .items(&candidates_to_display)
-            .default(1)
+            .default(0)
             .report(true)
             .clear(true)
             .interact_opt()?
@@ -141,7 +141,7 @@ mod tests {
 
         let mut buffer = Vec::new();
         let mut interaction = TestsInteraction {
-            select: 2,
+            select: 1,
             confirmation: Some(Ok(false)),
         };
 
@@ -166,7 +166,7 @@ mod tests {
 
         let mut buffer = Vec::new();
         let mut interaction = TestsInteraction {
-            select: 2,
+            select: 1,
             confirmation: Some(Ok(true)),
         };
 
@@ -191,7 +191,7 @@ mod tests {
 
         let mut buffer = Vec::new();
         let mut interaction = TestsInteraction {
-            select: 2,
+            select: 1,
             confirmation: Some(Ok(false)),
         };
 
@@ -214,7 +214,7 @@ mod tests {
 
         let mut buffer = Vec::new();
         let mut interaction = TestsInteraction {
-            select: 2,
+            select: 1,
             confirmation: Some(Ok(false)),
         };
 
@@ -237,7 +237,7 @@ mod tests {
 
         let mut buffer = Vec::new();
         let mut interaction = TestsInteraction {
-            select: 2,
+            select: 1,
             confirmation: Some(Err(GenerateConfigError::Interrupted)),
         };
 

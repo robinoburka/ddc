@@ -67,9 +67,9 @@ fn find_config_file(candidates: &[PathBuf]) -> Option<PathBuf> {
 
 pub fn get_config_file_candidates(home_dir: &Path) -> Vec<PathBuf> {
     vec![
-        PathBuf::from("ddc.toml"),
         home_dir.join(".config").join("ddc.toml"),
         home_dir.join(".ddc.toml"),
+        PathBuf::from("ddc.toml"),
     ]
 }
 
@@ -81,16 +81,16 @@ mod tests {
     fn test_get_config_candidates_based_on_home_dir() {
         let home_path = PathBuf::from("/home/foo");
         let candidates = get_config_file_candidates(&home_path);
-        assert_eq!(candidates.get(0), Some(&PathBuf::from("ddc.toml")));
         assert_eq!(
-            candidates.get(1),
+            candidates.get(0),
             Some(&PathBuf::from("/home/foo/.config/ddc.toml"))
         );
         assert_eq!(
-            candidates.get(2),
+            candidates.get(1),
             Some(&PathBuf::from("/home/foo/.ddc.toml"))
         );
-        assert_eq!(candidates.get(4), None);
+        assert_eq!(candidates.get(2), Some(&PathBuf::from("ddc.toml")));
+        assert_eq!(candidates.get(3), None);
     }
 
     #[test]
