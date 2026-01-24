@@ -32,15 +32,23 @@ pub enum ConfigError {
     },
 }
 
-pub fn load_config_file(home_dir: &Path) -> Result<Config, ConfigError> {
-    let candidates = get_config_file_candidates(home_dir);
-    let Some(cfg_path) = find_config_file(&candidates) else {
-        error!("Configuration file not found");
-        Err(ConfigError::ConfigurationFileNotFound)?
-    };
+pub fn load_config_file(
+    home_dir: &Path,
+    requested_path: Option<&Path>,
+) -> Result<Config, ConfigError> {
+    let cfg_data = if let Some(path) = requested_path {
+        debug!("Using configuration file: {}", path.display());
+        fs::read_to_string(path)?
+    } else {
+        let candidates = get_config_file_candidates(home_dir);
+        let Some(cfg_path) = find_config_file(&candidates) else {
+            error!("Configuration file not found");
+            Err(ConfigError::ConfigurationFileNotFound)?
+        };
 
-    debug!("Using configuration file: {}", cfg_path.display());
-    let cfg_data = fs::read_to_string(&cfg_path)?;
+        debug!("Using configuration file: {}", cfg_path.display());
+        fs::read_to_string(&cfg_path)?
+    };
     let config: Config = toml::from_str(cfg_data.as_str())?;
 
     Ok(config)
@@ -97,7 +105,24 @@ discovery = true
         "#;
         fs::write(&root_dir.join(".ddc.toml"), cfg_data).unwrap();
 
-        let config = load_config_file(root_dir).unwrap();
+        let config = load_config_file(root_dir, None).unwrap();
+        assert_eq!(config.paths.len(), 1);
+    }
+
+    #[test]
+    fn test_load_config_file_from_param() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root_dir = tmp.path();
+        std::env::set_current_dir(&root_dir).unwrap();
+        let cfg_data = r#"
+[[paths]]
+path = "projects/"
+discovery = true
+        "#;
+        fs::write(&root_dir.join("custom.toml"), cfg_data).unwrap();
+
+        let config =
+            load_config_file(root_dir, Some(root_dir.join("custom.toml").as_path())).unwrap();
         assert_eq!(config.paths.len(), 1);
     }
 
@@ -107,7 +132,7 @@ discovery = true
         let root_dir = tmp.path();
         std::env::set_current_dir(&root_dir).unwrap();
 
-        let result = load_config_file(root_dir);
+        let result = load_config_file(root_dir, None);
         assert!(
             matches!(result, Err(ConfigError::ConfigurationFileNotFound)),
             "WARNING: If this test fail, there is a change that the ddc.toml exists in current working directory!"
@@ -121,7 +146,7 @@ discovery = true
         std::env::set_current_dir(&root_dir).unwrap();
         fs::create_dir_all(root_dir.join(".ddc.toml")).unwrap();
 
-        let result = load_config_file(root_dir);
+        let result = load_config_file(root_dir, None);
         assert!(matches!(
             result,
             Err(ConfigError::CantLoadConfigurationFile { inner: _ })
@@ -135,7 +160,7 @@ discovery = true
         std::env::set_current_dir(&root_dir).unwrap();
         fs::write(&root_dir.join(".ddc.toml"), "").unwrap();
 
-        let result = load_config_file(root_dir);
+        let result = load_config_file(root_dir, None);
         assert!(matches!(
             result,
             Err(ConfigError::CannotParseConfigurationFile { inner: _ })

@@ -4,7 +4,7 @@ use std::path::Path;
 use owo_colors::OwoColorize;
 use tracing::error;
 
-use crate::cli::UiConfig;
+use crate::cli::{AnalyzeArgs, UiConfig};
 use crate::config::{ConfigError, load_config_file};
 use crate::discovery::{
     DiscoveryManager, ExternalDiscoveryDefinition, default_discovery_definitions,
@@ -22,16 +22,21 @@ pub enum AnalyzeError {
     NoResultsFound,
 }
 
-pub fn analyze(ui_config: &UiConfig, home_dir: &Path) -> Result<(), AnalyzeError> {
-    analyze_inner(&mut io::stdout(), ui_config, home_dir)
+pub fn analyze(
+    cmd_args: &AnalyzeArgs,
+    ui_config: &UiConfig,
+    home_dir: &Path,
+) -> Result<(), AnalyzeError> {
+    analyze_inner(&mut io::stdout(), cmd_args, ui_config, home_dir)
 }
 
 fn analyze_inner<W: Write>(
     out: &mut W,
+    cmd_args: &AnalyzeArgs,
     ui_config: &UiConfig,
     home_dir: &Path,
 ) -> Result<(), AnalyzeError> {
-    let config = load_config_file(home_dir)?;
+    let config = load_config_file(home_dir, cmd_args.shared.config.as_deref())?;
     let definitions = config
         .paths
         .into_iter()
@@ -132,7 +137,12 @@ discovery = true
         fs::write(&root_path.join(".ddc.toml"), cfg_data).unwrap();
 
         let mut buffer = Vec::new();
-        let result = analyze_inner(&mut buffer, &UiConfig::default(), root_path);
+        let result = analyze_inner(
+            &mut buffer,
+            &AnalyzeArgs::default(),
+            &UiConfig::default(),
+            root_path,
+        );
         assert_eq!(result.unwrap(), ());
 
         let output = String::from_utf8(buffer).unwrap();

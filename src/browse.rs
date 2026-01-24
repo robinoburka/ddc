@@ -5,7 +5,7 @@ use crossbeam::sync::WaitGroup;
 use tracing::error;
 
 use crate::browse_tui::App;
-use crate::cli::UiConfig;
+use crate::cli::{BrowseArgs, UiConfig};
 use crate::config::{ConfigError, load_config_file};
 use crate::discovery::DiscoveryResults;
 use crate::discovery::{DiscoveryManager, ExternalDiscoveryDefinition};
@@ -31,8 +31,12 @@ pub enum BrowseError {
     },
 }
 
-pub fn browse(ui_config: &UiConfig, home_dir: &Path) -> Result<(), BrowseError> {
-    let config = load_config_file(home_dir)?;
+pub fn browse(
+    cmd_args: &BrowseArgs,
+    ui_config: &UiConfig,
+    home_dir: &Path,
+) -> Result<(), BrowseError> {
+    let config = load_config_file(home_dir, cmd_args.shared.config.as_deref())?;
     let definitions = config
         .paths
         .into_iter()

@@ -8,7 +8,7 @@ use tracing::{debug, debug_span};
 
 use crate::analyze::{analyze, show_default_definitions};
 use crate::browse::browse;
-use crate::cli::{Args, Commands, UiConfig};
+use crate::cli::{AnalyzeArgs, CliArgs, Commands, UiConfig};
 use crate::generate_config::generate_config;
 use crate::logging::{LoggingLevel, setup_logging};
 
@@ -27,7 +27,7 @@ mod loader;
 mod logging;
 
 fn main() -> anyhow::Result<()> {
-    let args = Args::parse();
+    let args = CliArgs::parse();
 
     setup_logging(LoggingLevel::from(args.verbosity)).context("Failed to set up logging")?;
     {
@@ -44,9 +44,9 @@ fn main() -> anyhow::Result<()> {
     match args.command {
         Some(Commands::GenerateConfig) => generate_config(&home_dir)?,
         Some(Commands::ShowDefinitions) => show_default_definitions(&home_dir),
-        Some(Commands::Analyze(_)) => analyze(&ui_config, &home_dir)?,
-        Some(Commands::Browse(_)) => browse(&ui_config, &home_dir)?,
-        None => analyze(&ui_config, &home_dir)?,
+        Some(Commands::Analyze(cmd_args)) => analyze(&cmd_args, &ui_config, &home_dir)?,
+        Some(Commands::Browse(cmd_args)) => browse(&cmd_args, &ui_config, &home_dir)?,
+        None => analyze(&AnalyzeArgs::default(), &ui_config, &home_dir)?,
     };
 
     Ok(())
