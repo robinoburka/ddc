@@ -418,9 +418,7 @@ impl App {
         match self.browser.frames.last() {
             Some(directory_frame) => {
                 let text = format!(" Browsing: {} ", directory_frame.cwd.display());
-                let header = Paragraph::new(text)
-                    .block(block)
-                    .style(Style::default().fg(Color::White));
+                let header = Paragraph::new(text).block(block);
 
                 frame.render_widget(header, area);
             }
@@ -444,12 +442,12 @@ impl App {
                 let tabs = Tabs::new(titles)
                     .highlight_style(
                         Style::default()
+                            .bg(Color::Blue)
                             .fg(Color::White)
                             .add_modifier(Modifier::BOLD),
                     )
                     .select(self.selected_tab)
                     .padding(" ", " ")
-                    .style(Style::default().fg(Color::DarkGray))
                     .divider("|")
                     .block(block);
                 frame.render_widget(tabs, area);
@@ -460,18 +458,16 @@ impl App {
     fn render_footer(&self, frame: &mut Frame, area: Rect) {
         let footer = if let Some(message) = &self.error_message {
             let msg = format!(" {}", message);
-            Paragraph::new(msg)
-                .block(
-                    Block::default()
-                        .borders(Borders::ALL)
-                        .title(" ERROR ")
-                        .style(
-                            Style::default()
-                                .fg(Color::LightRed)
-                                .add_modifier(Modifier::BOLD),
-                        ),
-                )
-                .style(Style::default().fg(Color::White))
+            Paragraph::new(msg).block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title(" ERROR ")
+                    .style(
+                        Style::default()
+                            .fg(Color::LightRed)
+                            .add_modifier(Modifier::BOLD),
+                    ),
+            )
         } else {
             let line = vec![Line::from(vec![
                 Span::styled(
@@ -535,23 +531,22 @@ impl App {
                 Span::raw(" Quit"),
             ])];
 
-            Paragraph::new(line)
-                .block(
-                    Block::default()
-                        .borders(Borders::ALL)
-                        .title(Line::from(" Controls ").alignment(Alignment::Left))
-                        .title_bottom(
-                            Line::from(" More controls in the help ")
-                                .alignment(Alignment::Right)
-                                .style(
-                                    Style::default()
-                                        .fg(Color::Gray)
-                                        .add_modifier(Modifier::ITALIC),
-                                ),
-                        )
-                        .style(Style::default().fg(Color::Green)),
-                )
-                .style(Style::default().fg(Color::White))
+            Paragraph::new(line).block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title(Line::from(" Controls ").alignment(Alignment::Left))
+                    .title_style(Style::default().fg(Color::Green))
+                    .title_bottom(
+                        Line::from(" More controls in the help ")
+                            .alignment(Alignment::Right)
+                            .style(
+                                Style::default()
+                                    .fg(Color::Gray)
+                                    .add_modifier(Modifier::ITALIC),
+                            ),
+                    )
+                    .border_style(Style::default().fg(Color::Green)),
+            )
         };
 
         frame.render_widget(footer, area);
@@ -643,12 +638,12 @@ impl App {
                 Span::raw("          "),
                 Span::raw("This is useful if you want to inspect a footprint"),
             ])
-            .style(Style::default().fg(Color::Gray)),
+            .style(Style::default().add_modifier(Modifier::DIM)),
             Line::from(vec![
                 Span::raw("          "),
                 Span::raw("of the whole project, and not just the dev dir."),
             ])
-            .style(Style::default().fg(Color::Gray)),
+            .style(Style::default().add_modifier(Modifier::DIM)),
             Line::from(""),
             Line::from(vec![
                 Span::styled("Esc", Style::default().fg(Color::Yellow)),
@@ -666,19 +661,19 @@ impl App {
                 Span::raw("Quit the application"),
             ]),
         ])
-        .style(Style::default().fg(Color::White))
         .block(
             Block::bordered()
-                .style(Style::default().fg(Color::Green))
                 .padding(Padding::symmetric(2, 1))
                 .title(Line::from(" Help ").alignment(Alignment::Left))
+                .title_style(Style::default().fg(Color::Green))
                 .title(
                     Line::from(" Esc ").alignment(Alignment::Right).style(
                         Style::default()
                             .fg(Color::Red)
                             .add_modifier(Modifier::ITALIC),
                     ),
-                ),
+                )
+                .border_style(Style::default().fg(Color::Green)),
         );
 
         frame.render_widget(Clear, area);
@@ -718,7 +713,8 @@ impl App {
             Block::default()
                 .borders(Borders::ALL)
                 .title(" Projects ")
-                .style(Style::default().fg(Color::LightYellow)),
+                .title_style(Style::default().fg(Color::LightYellow))
+                .border_style(Style::default().fg(Color::LightYellow)),
         )
         .row_highlight_style(
             Style::default()
@@ -742,7 +738,6 @@ impl App {
             last_update_cell(self.now, result.last_update),
             parent_size_cell(result.parent.as_ref().map(|p| p.size)),
         ])
-        .style(Style::default().fg(Color::White))
     }
 
     fn render_tooling(
@@ -777,7 +772,8 @@ impl App {
             Block::default()
                 .borders(Borders::ALL)
                 .title(" Tools ")
-                .style(Style::default().fg(Color::LightYellow)),
+                .title_style(Style::default().fg(Color::LightYellow))
+                .border_style(Style::default().fg(Color::LightYellow)),
         )
         .row_highlight_style(
             Style::default()
@@ -800,13 +796,12 @@ impl App {
                 Span::raw(&result.description),
                 Span::styled(
                     format!(" ({})", result.path.display()),
-                    Style::default().fg(Color::DarkGray),
+                    Style::default().add_modifier(Modifier::DIM),
                 ),
             ])),
             size_cell(result.size),
             last_update_cell(self.now, result.last_update),
         ])
-        .style(Style::default().fg(Color::White))
     }
 
     fn render_directory(
@@ -827,7 +822,8 @@ impl App {
                 Block::default()
                     .borders(Borders::ALL)
                     .title(" Directory List ")
-                    .style(Style::default().fg(Color::LightYellow)),
+                    .title_style(Style::default().fg(Color::LightYellow))
+                    .border_style(Style::default().fg(Color::LightYellow)),
             )
             .highlight_style(
                 Style::default()
@@ -847,7 +843,7 @@ impl App {
         let (icon, name_style) = if item.is_directory {
             ("📁", Style::default().fg(Color::Cyan))
         } else {
-            ("📄", Style::default().fg(Color::White))
+            ("📄", Style::default())
         };
 
         let size_text = item
@@ -860,7 +856,7 @@ impl App {
             Span::styled(&item.name, name_style),
             Span::styled(
                 format!(" ({})", size_text),
-                Style::default().fg(Color::Gray),
+                Style::default().add_modifier(Modifier::DIM),
             ),
         ]);
 
@@ -879,7 +875,7 @@ fn popup_area(area: Rect, percent_x: u16, percent_y: u16) -> Rect {
 fn size_cell(size: u64) -> Cell<'static> {
     let text = format_size(size, DECIMAL);
     let color = match get_size_color_code(size) {
-        ColorCode::None => Color::White,
+        ColorCode::None => Color::Gray,
         ColorCode::Low => Color::Green,
         ColorCode::Medium => Color::Yellow,
         ColorCode::High => Color::Red,
@@ -898,7 +894,7 @@ fn last_update_cell(now: SystemTime, last: Option<SystemTime>) -> Cell<'static> 
         .unwrap_or_default();
 
     let color = match get_time_color_code(&now, &last) {
-        ColorCode::None => Color::White,
+        ColorCode::None => Color::Gray,
         ColorCode::Low => Color::Green,
         ColorCode::Medium => Color::Yellow,
         ColorCode::High => Color::Red,
@@ -912,5 +908,5 @@ fn parent_size_cell(parent_size: Option<u64>) -> Cell<'static> {
         .map(|s| format_size(s, DECIMAL))
         .unwrap_or_default();
 
-    Cell::from(text).style(Style::default().fg(Color::DarkGray))
+    Cell::from(text).style(Style::default().add_modifier(Modifier::DIM))
 }
