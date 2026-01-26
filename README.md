@@ -75,34 +75,16 @@ This color coding makes it easy to quickly assess your projects and decide which
 
 `ddc` identifies well-known paths used by popular tools. However, it cannot automatically determine where you store your projects. That’s why a configuration file is necessary.
 
-### Minimal Configuration
+### Configuration file structure
 
-As a minimum, you need to specify the path to your main development directory. For example:
+You need to specify the path to your main development directory. For example:
 
 ```toml
 [[paths]]
 path = "projects/"
-discovery = true
 ```
 
-### Record Structure
-
-Each record follows this structure:
-
-```toml
-[[paths]]
-name = "Custom virtualenv location"
-path = ".virtualenvs/"
-discovery = false
-language = "python"
-```
-
-Where:
-
-- `name` *(optional)* – A name for the path. Displayed in the tool’s output if `discovery` is set to `false`.
-- `path` – The directory path. All paths are assumed to be relative to your home directory.
-- `discovery` – If `true`, auto-discovery is enabled. This means `ddc` will try to identify paths such as virtual environments or Rust build directories.
-- `language` *(optional)* – The associated programming language. This setting is only useful when `discovery` is set to `false` and improves visual representation.
+Multiple directories are allowed. See the example configuration.
 
 ### Default Discovery Definitions
 
@@ -111,3 +93,17 @@ To see the paths that `ddc` scans by default, run:
 ```shell
 ddc show-definitions
 ```
+
+## Interactive browser
+
+_This feature is currently experimental._
+
+For interactive browsing of the results, you can use:
+
+```shell
+ddc browse
+```
+
+The interactive browser can be used to inspect results in more interactive manner. It enables you to jump to a reported path. Also, it enables you to jump to a parent of a reported path. It's useful to check the sizes of the project files overall.
+
+See the basic help in the footer, or use `?` to display the full UI help window.
