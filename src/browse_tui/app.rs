@@ -1,6 +1,7 @@
 use std::io;
 use std::option::Option;
 use std::path::PathBuf;
+use std::sync::OnceLock;
 use std::time::{Duration, SystemTime};
 
 use chrono::{DateTime, Local};
@@ -22,6 +23,12 @@ use crate::browse_tui::model::{Browser, DirItem, DirectoryBrowserFrame, ResultsT
 use crate::discovery::{ProjectResult, ToolingResult};
 use crate::display_tools::{ColorCode, get_size_color_code, get_time_color_code};
 use crate::files_db::FilesDB;
+
+static NOW: OnceLock<SystemTime> = OnceLock::new();
+
+fn now() -> SystemTime {
+    *NOW.get_or_init(SystemTime::now)
+}
 
 #[derive(Debug, Default, PartialEq, Eq)]
 enum RunningState {
@@ -76,7 +83,6 @@ pub struct App {
     selected_tab: usize,
     browser: Browser,
     error_message: Option<String>,
-    now: SystemTime,
     page_size: usize,
 }
 
@@ -86,24 +92,29 @@ impl App {
         tooling_data: Vec<ToolingResult>,
         db: FilesDB,
     ) -> Self {
+        let mut projects_state = TableState::default();
+        projects_state.select(Some(0));
+
+        let mut tooling_state = TableState::default();
+        tooling_state.select(Some(0));
+
         Self {
             db,
             running_state: RunningState::Running,
             mode: UiMode::Normal,
             tabs: vec![
                 Tab::Projects(ResultsTab {
-                    current_item: 0,
+                    state: projects_state,
                     results: projects_data,
                 }),
                 Tab::Tooling(ResultsTab {
-                    current_item: 0,
+                    state: tooling_state,
                     results: tooling_data,
                 }),
             ],
             selected_tab: PROJECTS_TAB,
             browser: Browser { frames: vec![] },
             error_message: None,
-            now: SystemTime::now(),
             page_size: 0,
         }
     }
@@ -232,35 +243,36 @@ impl App {
         }
     }
 
-    fn navigate_browser(frame: &mut DirectoryBrowserFrame, nav: Navigation) {
-        let len = frame.directory_list.len();
-        frame.current_item = Self::compute_index(frame.current_item, len, nav);
-    }
-
     fn navigate_tab<T>(tab: &mut ResultsTab<T>, nav: Navigation) {
-        let len = tab.results.len();
-        tab.current_item = Self::compute_index(tab.current_item, len, nav);
+        match nav {
+            Navigation::Up => tab.state.select_previous(),
+            Navigation::Down => tab.state.select_next(),
+            Navigation::PageUp(n) => tab.state.scroll_up_by(n as u16),
+            Navigation::PageDown(n) => tab.state.scroll_down_by(n as u16),
+            Navigation::Home => tab.state.select_first(),
+            Navigation::End => tab.state.select_last(),
+        }
     }
 
-    fn compute_index(current: usize, len: usize, nav: Navigation) -> usize {
-        if len == 0 {
-            return 0;
-        }
-
+    fn navigate_browser(frame: &mut DirectoryBrowserFrame, nav: Navigation) {
         match nav {
-            Navigation::Up => current.saturating_sub(1),
-            Navigation::Down => (current + 1).min(len - 1),
-            Navigation::PageUp(n) => current.saturating_sub(n),
-            Navigation::PageDown(n) => (current + n).min(len - 1),
-            Navigation::Home => 0,
-            Navigation::End => len - 1,
+            Navigation::Up => frame.state.select_previous(),
+            Navigation::Down => frame.state.select_next(),
+            Navigation::PageUp(n) => frame.state.scroll_up_by(n as u16),
+            Navigation::PageDown(n) => frame.state.scroll_down_by(n as u16),
+            Navigation::Home => frame.state.select_first(),
+            Navigation::End => frame.state.select_last(),
         }
     }
 
     fn enter(&mut self) {
         let path = match self.browser.frames.last_mut() {
             Some(frame) => {
-                let Some(item) = frame.directory_list.get(frame.current_item) else {
+                let Some(item) = frame
+                    .state
+                    .selected()
+                    .and_then(|i| frame.directory_list.get(i))
+                else {
                     self.error_message = Some(String::from("No item selected."));
                     return;
                 };
@@ -273,12 +285,16 @@ impl App {
                 Some(item.path.clone())
             }
             None => match self.tabs.get(self.selected_tab) {
-                Some(Tab::Projects(tab)) => {
-                    tab.results.get(tab.current_item).map(|r| r.path.clone())
-                }
-                Some(Tab::Tooling(tab)) => {
-                    tab.results.get(tab.current_item).map(|r| r.path.clone())
-                }
+                Some(Tab::Projects(tab)) => tab
+                    .state
+                    .selected()
+                    .and_then(|i| tab.results.get(i))
+                    .map(|r| r.path.clone()),
+                Some(Tab::Tooling(tab)) => tab
+                    .state
+                    .selected()
+                    .and_then(|i| tab.results.get(i))
+                    .map(|r| r.path.clone()),
                 None => None,
             },
         };
@@ -301,13 +317,15 @@ impl App {
             None => {
                 let parent_path = match self.tabs.get(self.selected_tab) {
                     Some(Tab::Projects(tab)) => tab
-                        .results
-                        .get(tab.current_item)
+                        .state
+                        .selected()
+                        .and_then(|i| tab.results.get(i))
                         .and_then(|r| r.parent.as_ref())
                         .map(|p| p.path.clone()),
                     Some(Tab::Tooling(tab)) => tab
-                        .results
-                        .get(tab.current_item)
+                        .state
+                        .selected()
+                        .and_then(|i| tab.results.get(i))
                         .and_then(|r| r.path.parent())
                         .map(PathBuf::from),
                     None => None,
@@ -335,8 +353,11 @@ impl App {
             return;
         }
 
+        let mut browser_sate = ListState::default();
+        browser_sate.select(Some(0));
+
         self.browser.frames.push(DirectoryBrowserFrame {
-            current_item: 0,
+            state: browser_sate,
             cwd: path.clone(),
             directory_list,
         });
@@ -366,19 +387,19 @@ impl App {
         let chunks = self.create_layout(frame.area());
 
         self.render_header(frame, chunks[0]);
-        match self.browser.frames.last() {
+        match self.browser.frames.last_mut() {
             Some(directory_frame) => {
                 self.page_size = chunks[1].height.saturating_sub(2) as usize;
-                self.render_directory(frame, chunks[1], directory_frame)
+                render_directory(frame, chunks[1], directory_frame)
             }
-            None => match self.tabs.get(self.selected_tab) {
+            None => match self.tabs.get_mut(self.selected_tab) {
                 Some(Tab::Projects(project_tab)) => {
                     self.page_size = chunks[1].height.saturating_sub(3) as usize;
-                    self.render_projects(frame, chunks[1], project_tab)
+                    render_projects(frame, chunks[1], project_tab)
                 }
                 Some(Tab::Tooling(tooling_tab)) => {
                     self.page_size = chunks[1].height.saturating_sub(3) as usize;
-                    self.render_tooling(frame, chunks[1], tooling_tab)
+                    render_tooling(frame, chunks[1], tooling_tab)
                 }
                 None => panic!("Tried to select non-existent tab. This shouldn't happen."),
             },
@@ -678,189 +699,164 @@ impl App {
         frame.render_widget(Clear, area);
         frame.render_widget(help, area);
     }
+}
 
-    fn render_projects(
-        &self,
-        frame: &mut Frame,
-        area: Rect,
-        projects_tab: &ResultsTab<ProjectResult>,
-    ) {
-        let rows: Vec<_> = projects_tab
-            .results
-            .iter()
-            .map(|r| self.create_project_row(r))
-            .collect();
+fn render_projects(frame: &mut Frame, area: Rect, projects_tab: &mut ResultsTab<ProjectResult>) {
+    let rows: Vec<_> = projects_tab
+        .results
+        .iter()
+        .map(|r| create_project_row(r))
+        .collect();
 
-        let table = Table::new(
-            rows,
-            [
-                Constraint::Length(3),
-                Constraint::Percentage(60),
-                Constraint::Length(10),
-                Constraint::Length(20),
-                Constraint::Length(11),
-            ],
-        )
-        .header(
-            Row::new(["", "Project", "Size", "Last update", "Parent size"]).style(
-                Style::default()
-                    .fg(Color::Blue)
-                    .add_modifier(Modifier::BOLD),
-            ),
-        )
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title(" Projects ")
-                .title_style(Style::default().fg(Color::LightYellow))
-                .border_style(Style::default().fg(Color::LightYellow)),
-        )
-        .row_highlight_style(
+    let table = Table::new(
+        rows,
+        [
+            Constraint::Length(3),
+            Constraint::Percentage(60),
+            Constraint::Length(10),
+            Constraint::Length(20),
+            Constraint::Length(11),
+        ],
+    )
+    .header(
+        Row::new(["", "Project", "Size", "Last update", "Parent size"]).style(
             Style::default()
-                .bg(Color::Blue)
-                .fg(Color::White)
+                .fg(Color::Blue)
                 .add_modifier(Modifier::BOLD),
-        )
-        .highlight_symbol("► ");
+        ),
+    )
+    .block(
+        Block::default()
+            .borders(Borders::ALL)
+            .title(" Projects ")
+            .title_style(Style::default().fg(Color::LightYellow))
+            .border_style(Style::default().fg(Color::LightYellow)),
+    )
+    .row_highlight_style(
+        Style::default()
+            .bg(Color::Blue)
+            .fg(Color::White)
+            .add_modifier(Modifier::BOLD),
+    )
+    .highlight_symbol("► ");
 
-        let mut table_state = TableState::default();
-        table_state.select(Some(projects_tab.current_item));
+    frame.render_stateful_widget(table, area, &mut projects_tab.state);
+}
 
-        frame.render_stateful_widget(table, area, &mut table_state);
-    }
+fn create_project_row<'a>(result: &'a ProjectResult) -> Row<'a> {
+    Row::new(vec![
+        Cell::from(format!("{} ", result.lang)),
+        Cell::from(Line::from(result.path.display().to_string())),
+        size_cell(result.size),
+        last_update_cell(now(), result.last_update),
+        parent_size_cell(result.parent.as_ref().map(|p| p.size)),
+    ])
+}
 
-    fn create_project_row<'a>(&self, result: &'a ProjectResult) -> Row<'a> {
-        Row::new(vec![
-            Cell::from(format!("{} ", result.lang)),
-            Cell::from(Line::from(result.path.display().to_string())),
-            size_cell(result.size),
-            last_update_cell(self.now, result.last_update),
-            parent_size_cell(result.parent.as_ref().map(|p| p.size)),
-        ])
-    }
+fn render_tooling(frame: &mut Frame, area: Rect, tooling_tab: &mut ResultsTab<ToolingResult>) {
+    let rows: Vec<_> = tooling_tab
+        .results
+        .iter()
+        .map(|r| create_tooling_row(r))
+        .collect();
 
-    fn render_tooling(
-        &self,
-        frame: &mut Frame,
-        area: Rect,
-        tooling_tab: &ResultsTab<ToolingResult>,
-    ) {
-        let rows: Vec<_> = tooling_tab
-            .results
-            .iter()
-            .map(|r| self.create_tooling_row(r))
-            .collect();
-
-        let table = Table::new(
-            rows,
-            [
-                Constraint::Length(3),
-                Constraint::Percentage(60),
-                Constraint::Length(10),
-                Constraint::Length(20),
-            ],
-        )
-        .header(
-            Row::new(["", "Tool", "Size", "Last update"]).style(
-                Style::default()
-                    .fg(Color::Blue)
-                    .add_modifier(Modifier::BOLD),
-            ),
-        )
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title(" Tools ")
-                .title_style(Style::default().fg(Color::LightYellow))
-                .border_style(Style::default().fg(Color::LightYellow)),
-        )
-        .row_highlight_style(
+    let table = Table::new(
+        rows,
+        [
+            Constraint::Length(3),
+            Constraint::Percentage(60),
+            Constraint::Length(10),
+            Constraint::Length(20),
+        ],
+    )
+    .header(
+        Row::new(["", "Tool", "Size", "Last update"]).style(
             Style::default()
-                .bg(Color::Blue)
-                .fg(Color::White)
+                .fg(Color::Blue)
                 .add_modifier(Modifier::BOLD),
-        )
-        .highlight_symbol("► ");
+        ),
+    )
+    .block(
+        Block::default()
+            .borders(Borders::ALL)
+            .title(" Tools ")
+            .title_style(Style::default().fg(Color::LightYellow))
+            .border_style(Style::default().fg(Color::LightYellow)),
+    )
+    .row_highlight_style(
+        Style::default()
+            .bg(Color::Blue)
+            .fg(Color::White)
+            .add_modifier(Modifier::BOLD),
+    )
+    .highlight_symbol("► ");
 
-        let mut table_state = TableState::default();
-        table_state.select(Some(tooling_tab.current_item));
+    frame.render_stateful_widget(table, area, &mut tooling_tab.state);
+}
 
-        frame.render_stateful_widget(table, area, &mut table_state);
-    }
-
-    fn create_tooling_row<'a>(&self, result: &'a ToolingResult) -> Row<'a> {
-        Row::new(vec![
-            Cell::from(format!("{} ", result.lang)),
-            Cell::from(Line::from(vec![
-                Span::raw(&result.description),
-                Span::styled(
-                    format!(" ({})", result.path.display()),
-                    Style::default().add_modifier(Modifier::DIM),
-                ),
-            ])),
-            size_cell(result.size),
-            last_update_cell(self.now, result.last_update),
-        ])
-    }
-
-    fn render_directory(
-        &self,
-        frame: &mut Frame,
-        area: Rect,
-        directory_frame: &DirectoryBrowserFrame,
-    ) {
-        let list_items: Vec<ListItem> = directory_frame
-            .directory_list
-            .iter()
-            .map(|path| self.create_directory_list_item(path))
-            .collect();
-
-        // Create the list widget
-        let list = List::new(list_items)
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .title(" Directory List ")
-                    .title_style(Style::default().fg(Color::LightYellow))
-                    .border_style(Style::default().fg(Color::LightYellow)),
-            )
-            .highlight_style(
-                Style::default()
-                    .bg(Color::Blue)
-                    .fg(Color::White)
-                    .add_modifier(Modifier::BOLD),
-            )
-            .highlight_symbol("► ");
-
-        let mut list_state = ListState::default();
-        list_state.select(Some(directory_frame.current_item));
-
-        frame.render_stateful_widget(list, area, &mut list_state);
-    }
-
-    fn create_directory_list_item<'a>(&self, item: &'a DirItem) -> ListItem<'a> {
-        let (icon, name_style) = if item.is_directory {
-            ("📁", Style::default().fg(Color::Cyan))
-        } else {
-            ("📄", Style::default())
-        };
-
-        let size_text = item
-            .size
-            .map(|size| format_size(size, DECIMAL))
-            .unwrap_or_else(|| "?".to_string());
-
-        let content = Line::from(vec![
-            Span::raw(format!("{} ", icon)),
-            Span::styled(&item.name, name_style),
+fn create_tooling_row<'a>(result: &'a ToolingResult) -> Row<'a> {
+    Row::new(vec![
+        Cell::from(format!("{} ", result.lang)),
+        Cell::from(Line::from(vec![
+            Span::raw(&result.description),
             Span::styled(
-                format!(" ({})", size_text),
+                format!(" ({})", result.path.display()),
                 Style::default().add_modifier(Modifier::DIM),
             ),
-        ]);
+        ])),
+        size_cell(result.size),
+        last_update_cell(now(), result.last_update),
+    ])
+}
 
-        ListItem::new(content)
-    }
+fn render_directory(frame: &mut Frame, area: Rect, directory_frame: &mut DirectoryBrowserFrame) {
+    let list_items: Vec<ListItem> = directory_frame
+        .directory_list
+        .iter()
+        .map(|path| create_directory_list_item(path))
+        .collect();
+
+    let list = List::new(list_items)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(" Directory List ")
+                .title_style(Style::default().fg(Color::LightYellow))
+                .border_style(Style::default().fg(Color::LightYellow)),
+        )
+        .highlight_style(
+            Style::default()
+                .bg(Color::Blue)
+                .fg(Color::White)
+                .add_modifier(Modifier::BOLD),
+        )
+        .highlight_symbol("► ");
+
+    frame.render_stateful_widget(list, area, &mut directory_frame.state);
+}
+
+fn create_directory_list_item<'a>(item: &'a DirItem) -> ListItem<'a> {
+    let (icon, name_style) = if item.is_directory {
+        ("📁", Style::default().fg(Color::Cyan))
+    } else {
+        ("📄", Style::default())
+    };
+
+    let size_text = item
+        .size
+        .map(|size| format_size(size, DECIMAL))
+        .unwrap_or_else(|| "?".to_string());
+
+    let content = Line::from(vec![
+        Span::raw(format!("{} ", icon)),
+        Span::styled(&item.name, name_style),
+        Span::styled(
+            format!(" ({})", size_text),
+            Style::default().add_modifier(Modifier::DIM),
+        ),
+    ]);
+
+    ListItem::new(content)
 }
 
 fn popup_area_clamped(
