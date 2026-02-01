@@ -11,7 +11,8 @@ use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{
-    Block, Borders, Cell, Clear, List, ListItem, ListState, Padding, Row, Table, TableState, Tabs,
+    Block, Borders, Cell, Clear, List, ListItem, ListState, Padding, Row, Scrollbar,
+    ScrollbarOrientation, ScrollbarState, Table, TableState, Tabs,
 };
 use ratatui::{
     DefaultTerminal, Frame,
@@ -105,10 +106,12 @@ impl App {
             tabs: vec![
                 Tab::Projects(ResultsTab {
                     state: projects_state,
+                    scroll_state: ScrollbarState::new(projects_data.len()),
                     results: projects_data,
                 }),
                 Tab::Tooling(ResultsTab {
                     state: tooling_state,
+                    scroll_state: ScrollbarState::new(tooling_data.len()),
                     results: tooling_data,
                 }),
             ],
@@ -245,23 +248,67 @@ impl App {
 
     fn navigate_tab<T>(tab: &mut ResultsTab<T>, nav: Navigation) {
         match nav {
-            Navigation::Up => tab.state.select_previous(),
-            Navigation::Down => tab.state.select_next(),
-            Navigation::PageUp(n) => tab.state.scroll_up_by(n as u16),
-            Navigation::PageDown(n) => tab.state.scroll_down_by(n as u16),
-            Navigation::Home => tab.state.select_first(),
-            Navigation::End => tab.state.select_last(),
+            Navigation::Up => {
+                tab.state.select_previous();
+                tab.scroll_state.prev();
+            }
+            Navigation::Down => {
+                tab.state.select_next();
+                tab.scroll_state.next();
+            }
+            Navigation::PageUp(n) => {
+                tab.state.scroll_up_by(n as u16);
+                tab.scroll_state = tab
+                    .scroll_state
+                    .position(tab.scroll_state.get_position().saturating_sub(n));
+            }
+            Navigation::PageDown(n) => {
+                tab.state.scroll_down_by(n as u16);
+                tab.scroll_state = tab
+                    .scroll_state
+                    .position(tab.scroll_state.get_position().saturating_add(n));
+            }
+            Navigation::Home => {
+                tab.state.select_first();
+                tab.scroll_state.first();
+            }
+            Navigation::End => {
+                tab.state.select_last();
+                tab.scroll_state.last();
+            }
         }
     }
 
     fn navigate_browser(frame: &mut DirectoryBrowserFrame, nav: Navigation) {
         match nav {
-            Navigation::Up => frame.state.select_previous(),
-            Navigation::Down => frame.state.select_next(),
-            Navigation::PageUp(n) => frame.state.scroll_up_by(n as u16),
-            Navigation::PageDown(n) => frame.state.scroll_down_by(n as u16),
-            Navigation::Home => frame.state.select_first(),
-            Navigation::End => frame.state.select_last(),
+            Navigation::Up => {
+                frame.state.select_previous();
+                frame.scroll_state.prev();
+            }
+            Navigation::Down => {
+                frame.state.select_next();
+                frame.scroll_state.next();
+            }
+            Navigation::PageUp(n) => {
+                frame.state.scroll_up_by(n as u16);
+                frame.scroll_state = frame
+                    .scroll_state
+                    .position(frame.scroll_state.get_position().saturating_sub(n));
+            }
+            Navigation::PageDown(n) => {
+                frame.state.scroll_down_by(n as u16);
+                frame.scroll_state = frame
+                    .scroll_state
+                    .position(frame.scroll_state.get_position().saturating_add(n));
+            }
+            Navigation::Home => {
+                frame.state.select_first();
+                frame.scroll_state.first();
+            }
+            Navigation::End => {
+                frame.state.select_last();
+                frame.scroll_state.last();
+            }
         }
     }
 
@@ -358,6 +405,7 @@ impl App {
 
         self.browser.frames.push(DirectoryBrowserFrame {
             state: browser_sate,
+            scroll_state: ScrollbarState::new(directory_list.len()),
             cwd: path.clone(),
             directory_list,
         });
@@ -741,6 +789,16 @@ fn render_projects(frame: &mut Frame, area: Rect, projects_tab: &mut ResultsTab<
     .highlight_symbol("► ");
 
     frame.render_stateful_widget(table, area, &mut projects_tab.state);
+
+    let needs_scroll = projects_tab.results.len() > area.height.saturating_sub(3) as usize;
+    if needs_scroll {
+        let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
+            .begin_symbol(Some("↑"))
+            .end_symbol(Some("↓"))
+            .track_symbol(Some("│"));
+
+        frame.render_stateful_widget(scrollbar, area, &mut projects_tab.scroll_state);
+    }
 }
 
 fn create_project_row<'a>(result: &'a ProjectResult) -> Row<'a> {
@@ -792,6 +850,16 @@ fn render_tooling(frame: &mut Frame, area: Rect, tooling_tab: &mut ResultsTab<To
     .highlight_symbol("► ");
 
     frame.render_stateful_widget(table, area, &mut tooling_tab.state);
+
+    let needs_scroll = tooling_tab.results.len() > area.height.saturating_sub(3) as usize;
+    if needs_scroll {
+        let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
+            .begin_symbol(Some("↑"))
+            .end_symbol(Some("↓"))
+            .track_symbol(Some("│"));
+
+        frame.render_stateful_widget(scrollbar, area, &mut tooling_tab.scroll_state);
+    }
 }
 
 fn create_tooling_row<'a>(result: &'a ToolingResult) -> Row<'a> {
@@ -833,6 +901,17 @@ fn render_directory(frame: &mut Frame, area: Rect, directory_frame: &mut Directo
         .highlight_symbol("► ");
 
     frame.render_stateful_widget(list, area, &mut directory_frame.state);
+
+    let needs_scroll =
+        directory_frame.directory_list.len() > area.height.saturating_sub(2) as usize;
+    if needs_scroll {
+        let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
+            .begin_symbol(Some("↑"))
+            .end_symbol(Some("↓"))
+            .track_symbol(Some("│"));
+
+        frame.render_stateful_widget(scrollbar, area, &mut directory_frame.scroll_state);
+    }
 }
 
 fn create_directory_list_item<'a>(item: &'a DirItem) -> ListItem<'a> {

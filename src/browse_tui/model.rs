@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use ratatui::widgets::{ListState, TableState};
+use ratatui::widgets::{ListState, ScrollbarState, TableState};
 
 use crate::discovery::{ProjectResult, ToolingResult};
 use crate::file_info::FileInfo;
@@ -15,6 +15,7 @@ pub(super) enum Tab {
 #[derive(Debug)]
 pub(super) struct ResultsTab<T> {
     pub(super) state: TableState,
+    pub(super) scroll_state: ScrollbarState,
     pub(super) results: Vec<T>,
 }
 
@@ -26,6 +27,7 @@ pub(super) struct Browser {
 #[derive(Debug)]
 pub(super) struct DirectoryBrowserFrame {
     pub(super) state: ListState,
+    pub(super) scroll_state: ScrollbarState,
     pub(super) cwd: PathBuf,
     pub(super) directory_list: Vec<DirItem>,
 }
