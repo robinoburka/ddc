@@ -12,7 +12,7 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{
     Block, Borders, Cell, Clear, List, ListItem, ListState, Padding, Row, Scrollbar,
-    ScrollbarOrientation, ScrollbarState, Table, TableState, Tabs,
+    ScrollbarOrientation, ScrollbarState, Table, TableState, Tabs, Wrap,
 };
 use ratatui::{
     DefaultTerminal, Frame,
@@ -729,6 +729,7 @@ impl App {
                 Span::raw("Quit the application"),
             ]),
         ])
+        .wrap(Wrap { trim: false })
         .block(
             Block::bordered()
                 .padding(Padding::symmetric(2, 1))
