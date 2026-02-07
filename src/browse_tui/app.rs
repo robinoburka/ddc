@@ -41,6 +41,7 @@ enum RunningState {
 #[derive(Debug, PartialEq, Eq)]
 enum Modal {
     Help,
+    Info,
 }
 
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -66,6 +67,7 @@ enum Message {
     EnterParent,
     Help,
     Close,
+    Info,
 }
 
 enum Navigation {
@@ -165,6 +167,7 @@ impl App {
                                 Some(Message::SelectTab(TOOLING_TAB))
                             }
                             KeyCode::Char('?') => Some(Message::Help),
+                            KeyCode::Char('i') => Some(Message::Info),
                             KeyCode::Esc => Some(Message::Close),
                             _ => None,
                         });
@@ -198,6 +201,7 @@ impl App {
                 Message::EnterParent => self.enter_parent(),
                 Message::SelectTab(tab) => self.select_tab(tab),
                 Message::Help => self.help(),
+                Message::Info => self.info(),
                 _ => {}
             },
             UiMode::Modal(_) => match msg {
@@ -428,6 +432,22 @@ impl App {
         self.mode = UiMode::Modal(Modal::Help);
     }
 
+    fn info(&mut self) {
+        if let Some(Tab::Tooling(tab)) = self.tabs.get(self.selected_tab)
+            && self.browser.frames.is_empty()
+            && tab
+                .state
+                .selected()
+                .and_then(|i| tab.results.get(i))
+                .and_then(|r| r.info.as_ref())
+                .is_some()
+        {
+            self.mode = UiMode::Modal(Modal::Info);
+        } else {
+            self.error_message = Some(String::from("There is no info for this item."))
+        }
+    }
+
     fn close(&mut self) {
         self.mode = UiMode::Normal;
     }
@@ -567,6 +587,13 @@ impl App {
                 ),
                 Span::raw(" Enter Parent  "),
                 Span::styled(
+                    "i",
+                    Style::default()
+                        .fg(Color::Yellow)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::raw(" Info  "),
+                Span::styled(
                     "d",
                     Style::default()
                         .fg(Color::Yellow)
@@ -624,6 +651,7 @@ impl App {
         if let UiMode::Modal(modal) = &self.mode {
             match modal {
                 Modal::Help => self.render_help_popup(frame, area),
+                Modal::Info => self.render_info_popup(frame, area),
             }
         }
     }
@@ -721,6 +749,12 @@ impl App {
             .style(Style::default().add_modifier(Modifier::DIM)),
             Line::from(""),
             Line::from(vec![
+                Span::styled("i", Style::default().fg(Color::Yellow)),
+                Span::raw("         "),
+                Span::raw("Show info window for the selected tool"),
+            ]),
+            Line::from(""),
+            Line::from(vec![
                 Span::styled("Esc", Style::default().fg(Color::Yellow)),
                 Span::raw("       "),
                 Span::raw("Close any pop-up window, e.g. Help"),
@@ -754,6 +788,43 @@ impl App {
 
         frame.render_widget(Clear, area);
         frame.render_widget(help, area);
+    }
+    fn render_info_popup(&self, frame: &mut Frame, area: Rect) {
+        let area = popup_area_clamped(area, 70, 150, 80, 22, 40, 60);
+        let msg = if let Some(Tab::Tooling(tab)) = self.tabs.get(self.selected_tab)
+            && let Some(info_msg) = tab
+                .state
+                .selected()
+                .and_then(|i| tab.results.get(i))
+                .and_then(|r| r.info.as_ref())
+        {
+            info_msg
+        } else {
+            // This should be a dead branch.
+            ""
+        };
+
+        let message_lines = msg.lines().map(Line::from).collect::<Vec<_>>();
+
+        let info = Paragraph::new(message_lines)
+            .wrap(Wrap { trim: false })
+            .block(
+                Block::bordered()
+                    .padding(Padding::symmetric(2, 1))
+                    .title_style(Style::default().fg(Color::LightBlue))
+                    .title(Line::from(" Info ").alignment(Alignment::Left))
+                    .title(
+                        Line::from(" Esc ").alignment(Alignment::Right).style(
+                            Style::default()
+                                .fg(Color::Red)
+                                .add_modifier(Modifier::ITALIC),
+                        ),
+                    )
+                    .border_style(Style::default().fg(Color::LightBlue)),
+            );
+
+        frame.render_widget(Clear, area);
+        frame.render_widget(info, area);
     }
 }
 
@@ -793,12 +864,13 @@ fn create_project_row<'a>(result: &'a ProjectResult) -> Row<'a> {
 fn render_tooling(frame: &mut Frame, area: Rect, tab: &mut ResultsTab<ToolingResult>) {
     let table_config = TableConfig {
         title: " Tools ",
-        header: vec!["", "Tool", "Size", "Last update"],
+        header: vec!["", "Tool", "Size", "Last update", "Info"],
         column_sizes: &[
             Constraint::Length(3),
             Constraint::Percentage(60),
             Constraint::Length(10),
             Constraint::Length(20),
+            Constraint::Length(4),
         ],
         row_fn: create_tooling_row,
     };
@@ -817,6 +889,7 @@ fn create_tooling_row<'a>(result: &'a ToolingResult) -> Row<'a> {
         ])),
         size_cell(result.size),
         last_update_cell(now(), result.last_update),
+        Cell::from(Span::raw(result.info.map(|_| "📖 »").unwrap_or_default())),
     ])
 }
 
