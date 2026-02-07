@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use ratatui::widgets::{ListState, ScrollbarState, TableState};
 
-use crate::discovery::{ProjectResult, ToolingResult};
+use crate::discovery::{ProjectResult, ToolingResult, VcsResult};
 use crate::file_info::FileInfo;
 use crate::files_db::FilesDB;
 
@@ -10,6 +10,7 @@ use crate::files_db::FilesDB;
 pub(super) enum Tab {
     Projects(ResultsTab<ProjectResult>),
     Tooling(ResultsTab<ToolingResult>),
+    Vcs(ResultsTab<VcsResult>),
 }
 
 #[derive(Debug)]
