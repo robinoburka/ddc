@@ -143,6 +143,13 @@ impl<L: PathLoader> DiscoveryManager<L> {
         let mut project_results = vec![];
         let mut tooling_results = vec![];
         let (tx, rx) = channel::unbounded();
+        spawn_special_detector_thread(
+            self.db.clone(),
+            self.definitions.clone(),
+            static_detector,
+            tx.clone(),
+            self.create_reporter(),
+        );
         spawn_discovery_thread(
             self.db.clone(),
             self.definitions.clone(),
@@ -164,31 +171,7 @@ impl<L: PathLoader> DiscoveryManager<L> {
             tx.clone(),
             self.create_reporter(),
         );
-
-        let db = self.db.clone();
-        let definitions = self.definitions.clone();
-        let thread_reporter = reporter.clone();
-        rayon::spawn(move || {
-            let _guard = debug_span!("static_thread").entered();
-            for definition in definitions.iter() {
-                if let DiscoveryDefinitionType::BuildIn(dd) = definition
-                    && !dd.discovery
-                {
-                    let size = db.iter_dir(&dd.path).filter_map(|fi| fi.size).sum();
-                    let last_update = db.iter_dir(&dd.path).filter_map(|fi| fi.touched).max();
-                    let r = DiscoveryResultEnvelop::Tool(ToolingResult {
-                        description: dd.description.clone(),
-                        lang: dd.lang,
-                        path: dd.path.clone(),
-                        last_update,
-                        size,
-                        info: dd.info,
-                    });
-                    tx.send(r).unwrap();
-                }
-            }
-            thread_reporter.report(ProgressEvent::DiscoveryAdvance)
-        });
+        drop(tx);
 
         for res in rx.iter() {
             match res {
@@ -207,6 +190,23 @@ impl<L: PathLoader> DiscoveryManager<L> {
     }
 }
 
+fn spawn_special_detector_thread<D, R>(
+    db: Arc<FilesDB>,
+    definitions: Arc<Vec<DiscoveryDefinitionType>>,
+    detector: D,
+    tx: Sender<DiscoveryResultEnvelop>,
+    progress: R,
+) where
+    D: FnOnce(Arc<FilesDB>, Arc<Vec<DiscoveryDefinitionType>>, Sender<DiscoveryResultEnvelop>, R)
+        + Send
+        + 'static,
+    R: ProgressReporter,
+{
+    rayon::spawn(move || {
+        detector(db, definitions, tx, progress);
+    });
+}
+
 fn spawn_discovery_thread<D, R>(
     db: Arc<FilesDB>,
     definitions: Arc<Vec<DiscoveryDefinitionType>>,
@@ -221,6 +221,35 @@ fn spawn_discovery_thread<D, R>(
         let _guard = debug_span!("discovery_thread", lang = ?D::LANG).entered();
         discovery_thread(db, definitions, detector, tx, progress);
     });
+}
+
+fn static_detector<R>(
+    db: Arc<FilesDB>,
+    definitions: Arc<Vec<DiscoveryDefinitionType>>,
+    tx: Sender<DiscoveryResultEnvelop>,
+    progress: R,
+) where
+    R: ProgressReporter,
+{
+    let _guard = debug_span!("static_thread").entered();
+    for definition in definitions.iter() {
+        if let DiscoveryDefinitionType::BuildIn(dd) = definition
+            && !dd.discovery
+        {
+            let size = db.iter_dir(&dd.path).filter_map(|fi| fi.size).sum();
+            let last_update = db.iter_dir(&dd.path).filter_map(|fi| fi.touched).max();
+            let r = DiscoveryResultEnvelop::Tool(ToolingResult {
+                description: dd.description.clone(),
+                lang: dd.lang,
+                path: dd.path.clone(),
+                last_update,
+                size,
+                info: dd.info,
+            });
+            tx.send(r).unwrap();
+        }
+    }
+    progress.report(ProgressEvent::DiscoveryAdvance)
 }
 
 fn discovery_thread<D, R>(
