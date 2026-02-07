@@ -594,19 +594,12 @@ impl App {
                 ),
                 Span::raw(" Info  "),
                 Span::styled(
-                    "d",
+                    "d/t",
                     Style::default()
                         .fg(Color::Yellow)
                         .add_modifier(Modifier::BOLD),
                 ),
-                Span::raw(" Projects View  "),
-                Span::styled(
-                    "t",
-                    Style::default()
-                        .fg(Color::Yellow)
-                        .add_modifier(Modifier::BOLD),
-                ),
-                Span::raw(" Tools View  "),
+                Span::raw(" Select Tab  "),
                 Span::styled(
                     "Esc",
                     Style::default()
