@@ -78,6 +78,7 @@ fn start_tui(discovery_results: DiscoveryResults) -> io::Result<()> {
         App::new(
             discovery_results.projects,
             discovery_results.tools,
+            discovery_results.vcs,
             // Already checked in browse()
             discovery_results.db.unwrap(),
         )

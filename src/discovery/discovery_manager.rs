@@ -13,7 +13,7 @@ use crate::discovery::detectors::{JsNpmDetector, PythonVenvDetector, RustBuildDi
 use crate::discovery::discovery_definitions::DiscoveryDefinitionType;
 use crate::discovery::progress::{ProgressEvent, ProgressReporter};
 use crate::discovery::results::{
-    DiscoveryResultEnvelop, DiscoveryResults, ParentInfo, ProjectResult, ToolingResult,
+    DiscoveryResultEnvelop, DiscoveryResults, ParentInfo, ProjectResult, ToolingResult, VcsResult,
 };
 use crate::files_db::FilesDB;
 use crate::loader::FullyParallelLoader;
@@ -111,12 +111,13 @@ impl<L: PathLoader> DiscoveryManager<L> {
 
     pub fn collect(mut self) -> DiscoveryResults {
         self.load_paths();
-        let (projects, tools) = self.discover();
+        let (projects, tools, vcs) = self.discover();
         drop(self.progress_tx);
 
         DiscoveryResults {
             projects,
             tools,
+            vcs,
             db: Arc::into_inner(self.db),
         }
     }
@@ -136,17 +137,25 @@ impl<L: PathLoader> DiscoveryManager<L> {
     }
 
     #[instrument(level = "debug", skip(self))]
-    fn discover(&mut self) -> (Vec<ProjectResult>, Vec<ToolingResult>) {
+    fn discover(&mut self) -> (Vec<ProjectResult>, Vec<ToolingResult>, Vec<VcsResult>) {
         let reporter = self.create_reporter();
-        reporter.report(ProgressEvent::DiscoveryStart { count: 4 });
+        reporter.report(ProgressEvent::DiscoveryStart { count: 5 });
 
         let mut project_results = vec![];
         let mut tooling_results = vec![];
+        let mut vcs_results = vec![];
         let (tx, rx) = channel::unbounded();
         spawn_special_detector_thread(
             self.db.clone(),
             self.definitions.clone(),
             static_detector,
+            tx.clone(),
+            self.create_reporter(),
+        );
+        spawn_special_detector_thread(
+            self.db.clone(),
+            self.definitions.clone(),
+            vcs_detector,
             tx.clone(),
             self.create_reporter(),
         );
@@ -181,12 +190,13 @@ impl<L: PathLoader> DiscoveryManager<L> {
                         tooling_results.push(r)
                     }
                 }
+                DiscoveryResultEnvelop::Vcs(vcs) => vcs_results.push(vcs),
             }
         }
 
         reporter.report(ProgressEvent::DiscoveryFinished);
 
-        (project_results, tooling_results)
+        (project_results, tooling_results, vcs_results)
     }
 }
 
@@ -248,6 +258,49 @@ fn static_detector<R>(
             });
             tx.send(r).unwrap();
         }
+    }
+    progress.report(ProgressEvent::DiscoveryAdvance)
+}
+
+fn vcs_detector<R>(
+    db: Arc<FilesDB>,
+    definitions: Arc<Vec<DiscoveryDefinitionType>>,
+    tx: Sender<DiscoveryResultEnvelop>,
+    progress: R,
+) where
+    R: ProgressReporter,
+{
+    let _guard = debug_span!("vcs_thread").entered();
+    for definition in definitions.iter() {
+        if let DiscoveryDefinitionType::BuildIn(dd) = definition
+            && !dd.discovery
+        {
+            continue;
+        }
+        let path_to_detect = match definition {
+            DiscoveryDefinitionType::BuildIn(dd) => &dd.path,
+            DiscoveryDefinitionType::External(ed) => &ed.path,
+        };
+        let detected_paths: Vec<PathBuf> = db
+            .iter_directories(path_to_detect)
+            .filter(|fi| fi.path.ends_with(".git") && db.is_dir(fi.path))
+            .filter_map(|fi| fi.path.parent().map(PathBuf::from))
+            .collect();
+        detected_paths.iter().for_each(|p| {
+            let size = db.iter_dir(p).filter_map(|fi| fi.size).sum();
+            let last_update = db.iter_dir(p).filter_map(|fi| fi.touched).max();
+            let vcs_size = db
+                .iter_dir(&p.join(PathBuf::from(".git")))
+                .filter_map(|fi| fi.size)
+                .sum();
+            let r = DiscoveryResultEnvelop::Vcs(VcsResult {
+                path: (*p).clone(),
+                last_update,
+                size,
+                vcs_size,
+            });
+            tx.send(r).unwrap();
+        });
     }
     progress.report(ProgressEvent::DiscoveryAdvance)
 }
@@ -400,8 +453,8 @@ mod tests {
         // 2 files in projects/ mocked path
         assert!(progress_report.contains(&ProgressEvent::WalkAddPaths { count: 2 }));
         assert!(progress_report.contains(&ProgressEvent::WalkFinished));
-        // Current count of expected detectors 3 + 1 for non-discovery definitions
-        assert!(progress_report.contains(&ProgressEvent::DiscoveryStart { count: 4 }));
+        // Current count of expected detectors 3 + 1 + 1 for non-discovery definitions
+        assert!(progress_report.contains(&ProgressEvent::DiscoveryStart { count: 5 }));
         assert!(progress_report.contains(&ProgressEvent::DiscoveryAdvance));
         assert!(progress_report.contains(&ProgressEvent::DiscoveryFinished));
     }

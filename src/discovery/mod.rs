@@ -10,6 +10,6 @@ pub use default_definitions::default_discovery_definitions;
 pub use discovery_definitions::ExternalDiscoveryDefinition;
 pub use discovery_manager::{DiscoveryManager, PathLoader};
 pub use progress::{ProgressEvent, ProgressReporter};
-pub use results::{DiscoveryResults, ProjectResult, ToolingResult};
+pub use results::{DiscoveryResults, ProjectResult, ToolingResult, VcsResult};
 #[allow(unused)]
 pub use types::{Language, TypesError};
