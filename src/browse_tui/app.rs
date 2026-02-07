@@ -19,11 +19,10 @@ use ratatui::{
     crossterm::event::{self, Event, KeyCode},
     widgets::Paragraph,
 };
-
 use crate::browse_tui::helpers;
 use crate::browse_tui::model::{Browser, DirItem, DirectoryBrowserFrame, ResultsTab, Tab};
 use crate::browse_tui::widgets::{PopUp, PopUpState};
-use crate::discovery::{ProjectResult, ToolingResult};
+use crate::discovery::{ProjectResult, ToolingResult, VcsResult};
 use crate::display_tools::{ColorCode, get_size_color_code, get_time_color_code};
 use crate::files_db::FilesDB;
 
@@ -83,6 +82,7 @@ enum Navigation {
 
 const PROJECTS_TAB: usize = 0;
 const TOOLING_TAB: usize = 1;
+const VCS_TAB: usize = 2;
 
 #[derive(Debug)]
 pub struct App {
@@ -100,6 +100,7 @@ impl App {
     pub fn new(
         projects_data: Vec<ProjectResult>,
         tooling_data: Vec<ToolingResult>,
+        vcs_data: Vec<VcsResult>,
         db: FilesDB,
     ) -> Self {
         Self {
@@ -124,6 +125,15 @@ impl App {
                     },
                     scroll_state: ScrollbarState::new(tooling_data.len()),
                     results: tooling_data,
+                }),
+                Tab::Vcs(ResultsTab {
+                    state: {
+                        let mut vcs_state = TableState::default();
+                        vcs_state.select(Some(0));
+                        vcs_state
+                    },
+                    scroll_state: ScrollbarState::new(vcs_data.len()),
+                    results: vcs_data,
                 }),
             ],
             selected_tab: PROJECTS_TAB,
@@ -169,6 +179,9 @@ impl App {
                             }
                             KeyCode::Char('t') | KeyCode::Char('2') => {
                                 Some(Message::SelectTab(TOOLING_TAB))
+                            }
+                            KeyCode::Char('v') | KeyCode::Char('3') => {
+                                Some(Message::SelectTab(VCS_TAB))
                             }
                             KeyCode::Char('?') => Some(Message::Help),
                             KeyCode::Char('i') => Some(Message::Info),
@@ -260,6 +273,7 @@ impl App {
                 None => match self.tabs.get_mut(self.selected_tab) {
                     Some(Tab::Projects(tab)) => Self::navigate_tab(tab, nav),
                     Some(Tab::Tooling(tab)) => Self::navigate_tab(tab, nav),
+                    Some(Tab::Vcs(tab)) => Self::navigate_tab(tab, nav),
                     None => panic!("Tried to select non-existent tab. This shouldn't happen."),
                 },
             },
@@ -387,6 +401,11 @@ impl App {
                     .selected()
                     .and_then(|i| tab.results.get(i))
                     .map(|r| r.path.clone()),
+                Some(Tab::Vcs(tab)) => tab
+                    .state
+                    .selected()
+                    .and_then(|i| tab.results.get(i))
+                    .map(|r| r.path.clone()),
                 None => None,
             },
         };
@@ -415,6 +434,12 @@ impl App {
                         .and_then(|r| r.parent.as_ref())
                         .map(|p| p.path.clone()),
                     Some(Tab::Tooling(tab)) => tab
+                        .state
+                        .selected()
+                        .and_then(|i| tab.results.get(i))
+                        .and_then(|r| r.path.parent())
+                        .map(PathBuf::from),
+                    Some(Tab::Vcs(tab)) => tab
                         .state
                         .selected()
                         .and_then(|i| tab.results.get(i))
@@ -508,6 +533,10 @@ impl App {
                     self.page_size = chunks[1].height.saturating_sub(3) as usize;
                     render_tooling(frame, chunks[1], tooling_tab)
                 }
+                Some(Tab::Vcs(vcs_tab)) => {
+                    self.page_size = chunks[1].height.saturating_sub(3) as usize;
+                    render_vcs(frame, chunks[1], vcs_tab)
+                }
                 None => panic!("Tried to select non-existent tab. This shouldn't happen."),
             },
         }
@@ -532,6 +561,7 @@ impl App {
             match tab {
                 Tab::Projects(projects) => projects.results.len(),
                 Tab::Tooling(tooling) => tooling.results.len(),
+                Tab::Vcs(vcs) => vcs.results.len(),
             }
         }
 
@@ -562,6 +592,13 @@ impl App {
                         Span::raw(format!(
                             "ooling Overview ({})",
                             get_tab_len(&self.tabs[TOOLING_TAB])
+                        )),
+                    ]),
+                    Line::from(vec![
+                        Span::styled("V", Style::default().add_modifier(Modifier::UNDERLINED)),
+                        Span::raw(format!(
+                            "ersion Controlled ({})",
+                            get_tab_len(&self.tabs[VCS_TAB])
                         )),
                     ]),
                 ];
@@ -632,7 +669,7 @@ impl App {
                 ),
                 Span::raw(" Info  "),
                 Span::styled(
-                    "d/t",
+                    "d/t/v",
                     Style::default()
                         .fg(Color::Yellow)
                         .add_modifier(Modifier::BOLD),
@@ -900,6 +937,31 @@ fn create_tooling_row<'a>(result: &'a ToolingResult) -> Row<'a> {
         Cell::from(Span::raw(result.info.map(|_| "📖 »").unwrap_or_default())),
     ])
 }
+
+fn render_vcs(frame: &mut Frame, area: Rect, tab: &mut ResultsTab<VcsResult>) {
+    let table_config = TableConfig {
+        title: " Version Controlled Directories ",
+        header: vec!["Path", "Size", "Last project update", "VCS dir size"],
+        column_sizes: &[
+            Constraint::Percentage(60),
+            Constraint::Length(10),
+            Constraint::Length(20),
+            Constraint::Length(12),
+        ],
+        row_fn: create_vcs_row,
+    };
+    render_results(frame, area, tab, &table_config);
+}
+
+fn create_vcs_row<'a>(result: &'a VcsResult) -> Row<'a> {
+    Row::new(vec![
+        Cell::from(Line::from(result.path.display().to_string())),
+        size_cell(result.size),
+        last_update_cell(now(), result.last_update),
+        parent_size_cell(Some(result.vcs_size)),
+    ])
+}
+
 fn render_results<T>(
     frame: &mut Frame,
     area: Rect,
