@@ -750,56 +750,27 @@ impl App {
     }
 }
 
-fn render_projects(frame: &mut Frame, area: Rect, projects_tab: &mut ResultsTab<ProjectResult>) {
-    let rows: Vec<_> = projects_tab
-        .results
-        .iter()
-        .map(|r| create_project_row(r))
-        .collect();
+struct TableConfig<'a, T> {
+    title: &'a str,
+    header: Vec<&'a str>,
+    column_sizes: &'static [Constraint],
+    row_fn: for<'r> fn(&'r T) -> Row<'r>,
+}
 
-    let table = Table::new(
-        rows,
-        [
+fn render_projects(frame: &mut Frame, area: Rect, tab: &mut ResultsTab<ProjectResult>) {
+    let table_config = TableConfig {
+        title: " Projects ",
+        header: vec!["", "Project", "Size", "Last update", "Parent size"],
+        column_sizes: &[
             Constraint::Length(3),
             Constraint::Percentage(60),
             Constraint::Length(10),
             Constraint::Length(20),
             Constraint::Length(11),
         ],
-    )
-    .header(
-        Row::new(["", "Project", "Size", "Last update", "Parent size"]).style(
-            Style::default()
-                .fg(Color::Blue)
-                .add_modifier(Modifier::BOLD),
-        ),
-    )
-    .block(
-        Block::default()
-            .borders(Borders::ALL)
-            .title(" Projects ")
-            .title_style(Style::default().fg(Color::LightYellow))
-            .border_style(Style::default().fg(Color::LightYellow)),
-    )
-    .row_highlight_style(
-        Style::default()
-            .bg(Color::Blue)
-            .fg(Color::White)
-            .add_modifier(Modifier::BOLD),
-    )
-    .highlight_symbol("► ");
-
-    frame.render_stateful_widget(table, area, &mut projects_tab.state);
-
-    let needs_scroll = projects_tab.results.len() > area.height.saturating_sub(3) as usize;
-    if needs_scroll {
-        let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
-            .begin_symbol(Some("↑"))
-            .end_symbol(Some("↓"))
-            .track_symbol(Some("│"));
-
-        frame.render_stateful_widget(scrollbar, area, &mut projects_tab.scroll_state);
-    }
+        row_fn: create_project_row,
+    };
+    render_results(frame, area, tab, &table_config);
 }
 
 fn create_project_row<'a>(result: &'a ProjectResult) -> Row<'a> {
@@ -812,55 +783,19 @@ fn create_project_row<'a>(result: &'a ProjectResult) -> Row<'a> {
     ])
 }
 
-fn render_tooling(frame: &mut Frame, area: Rect, tooling_tab: &mut ResultsTab<ToolingResult>) {
-    let rows: Vec<_> = tooling_tab
-        .results
-        .iter()
-        .map(|r| create_tooling_row(r))
-        .collect();
-
-    let table = Table::new(
-        rows,
-        [
+fn render_tooling(frame: &mut Frame, area: Rect, tab: &mut ResultsTab<ToolingResult>) {
+    let table_config = TableConfig {
+        title: " Tools ",
+        header: vec!["", "Tool", "Size", "Last update"],
+        column_sizes: &[
             Constraint::Length(3),
             Constraint::Percentage(60),
             Constraint::Length(10),
             Constraint::Length(20),
         ],
-    )
-    .header(
-        Row::new(["", "Tool", "Size", "Last update"]).style(
-            Style::default()
-                .fg(Color::Blue)
-                .add_modifier(Modifier::BOLD),
-        ),
-    )
-    .block(
-        Block::default()
-            .borders(Borders::ALL)
-            .title(" Tools ")
-            .title_style(Style::default().fg(Color::LightYellow))
-            .border_style(Style::default().fg(Color::LightYellow)),
-    )
-    .row_highlight_style(
-        Style::default()
-            .bg(Color::Blue)
-            .fg(Color::White)
-            .add_modifier(Modifier::BOLD),
-    )
-    .highlight_symbol("► ");
-
-    frame.render_stateful_widget(table, area, &mut tooling_tab.state);
-
-    let needs_scroll = tooling_tab.results.len() > area.height.saturating_sub(3) as usize;
-    if needs_scroll {
-        let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
-            .begin_symbol(Some("↑"))
-            .end_symbol(Some("↓"))
-            .track_symbol(Some("│"));
-
-        frame.render_stateful_widget(scrollbar, area, &mut tooling_tab.scroll_state);
-    }
+        row_fn: create_tooling_row,
+    };
+    render_results(frame, area, tab, &table_config);
 }
 
 fn create_tooling_row<'a>(result: &'a ToolingResult) -> Row<'a> {
@@ -876,6 +811,50 @@ fn create_tooling_row<'a>(result: &'a ToolingResult) -> Row<'a> {
         size_cell(result.size),
         last_update_cell(now(), result.last_update),
     ])
+}
+
+fn render_results<T>(
+    frame: &mut Frame,
+    area: Rect,
+    tab: &mut ResultsTab<T>,
+    config: &TableConfig<T>,
+) {
+    let rows: Vec<_> = tab.results.iter().map(config.row_fn).collect();
+
+    let table = Table::new(rows, config.column_sizes)
+        .header(
+            Row::new(config.header.clone()).style(
+                Style::default()
+                    .fg(Color::Blue)
+                    .add_modifier(Modifier::BOLD),
+            ),
+        )
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(config.title)
+                .title_style(Style::default().fg(Color::LightYellow))
+                .border_style(Style::default().fg(Color::LightYellow)),
+        )
+        .row_highlight_style(
+            Style::default()
+                .bg(Color::Blue)
+                .fg(Color::White)
+                .add_modifier(Modifier::BOLD),
+        )
+        .highlight_symbol("► ");
+
+    frame.render_stateful_widget(table, area, &mut tab.state);
+
+    let needs_scroll = tab.results.len() > area.height.saturating_sub(3) as usize;
+    if needs_scroll {
+        let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
+            .begin_symbol(Some("↑"))
+            .end_symbol(Some("↓"))
+            .track_symbol(Some("│"));
+
+        frame.render_stateful_widget(scrollbar, area, &mut tab.scroll_state);
+    }
 }
 
 fn render_directory(frame: &mut Frame, area: Rect, directory_frame: &mut DirectoryBrowserFrame) {
