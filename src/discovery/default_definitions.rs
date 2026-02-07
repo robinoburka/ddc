@@ -3,6 +3,21 @@ use std::path::Path;
 use crate::discovery::Language;
 use crate::discovery::discovery_definitions::DiscoveryDefinition;
 
+const CARGO_REGISTRY_INFO: &str = r#"It's considered to be safe to delete the whole `.cargo/registry` directory.
+
+Cargo will just need to download data to during the next compiles.
+
+Alternatively, you can check `cargo-cache` binary crate."#;
+
+const UV_PYTHON_INSTALLATIONS_INFO: &str = r#"Use `uv python list` to inspect installed Python version.
+
+Then you can remove unnecessary instalations with: `uv python uninstall VERSION`."#;
+const UV_CACHE_INFO: &str = r#"Use `uv cache clean` to remove all cache entries.
+
+Alternatively you can use `uv cache prune` to remove just outdated records. E.g. entries from previous uv versions."#;
+const POETRY_CACHE_INFO: &str =
+    r#"Use `poetry cache list` and then `poetry cache clear [--all] CACHE_NAME`"#;
+
 pub fn default_discovery_definitions(home: &Path) -> Vec<DiscoveryDefinition> {
     let mut definitions = vec![
         // Rust
@@ -13,6 +28,7 @@ pub fn default_discovery_definitions(home: &Path) -> Vec<DiscoveryDefinition> {
             discovery: false,
             description: "Cargo registry".into(),
             path: ".cargo/registry".into(),
+            info: Some(CARGO_REGISTRY_INFO),
         },
         // Python
         ////////////////////////////////////////
@@ -22,6 +38,7 @@ pub fn default_discovery_definitions(home: &Path) -> Vec<DiscoveryDefinition> {
             discovery: false,
             description: "Poetry cache".into(),
             path: "Library/Caches/pypoetry".into(),
+            info: Some(POETRY_CACHE_INFO),
         },
         // Poetry on macOS - default virtualenvs
         DiscoveryDefinition {
@@ -29,6 +46,7 @@ pub fn default_discovery_definitions(home: &Path) -> Vec<DiscoveryDefinition> {
             discovery: true,
             description: "Poetry virtualenvs".into(),
             path: "Library/Caches/pypoetry/virtualenvs".into(),
+            info: None,
         },
         // Poetry on Unix - cache
         DiscoveryDefinition {
@@ -36,6 +54,7 @@ pub fn default_discovery_definitions(home: &Path) -> Vec<DiscoveryDefinition> {
             discovery: false,
             description: "Poetry cache".into(),
             path: ".cache/pypoetry".into(),
+            info: Some(POETRY_CACHE_INFO),
         },
         // Poetry on Unix - default virtualenvs
         DiscoveryDefinition {
@@ -43,6 +62,7 @@ pub fn default_discovery_definitions(home: &Path) -> Vec<DiscoveryDefinition> {
             discovery: true,
             description: "Poetry virtualenvs".into(),
             path: ".cache/pypoetry/virtualenvs".into(),
+            info: None,
         },
         // uv on Linux/macOS - cache
         DiscoveryDefinition {
@@ -50,6 +70,7 @@ pub fn default_discovery_definitions(home: &Path) -> Vec<DiscoveryDefinition> {
             discovery: false,
             description: "uv cache".into(),
             path: ".cache/uv".into(),
+            info: Some(UV_CACHE_INFO),
         },
         // uv alternative Python installation directory
         DiscoveryDefinition {
@@ -57,6 +78,7 @@ pub fn default_discovery_definitions(home: &Path) -> Vec<DiscoveryDefinition> {
             discovery: false,
             description: "uv Python downloads".into(),
             path: ".local/share/uv/python".into(),
+            info: Some(UV_PYTHON_INSTALLATIONS_INFO),
         },
         // JavaScript
         ////////////////////////////////////////
@@ -66,6 +88,7 @@ pub fn default_discovery_definitions(home: &Path) -> Vec<DiscoveryDefinition> {
             discovery: false,
             description: "NPM cache".into(),
             path: ".npm".into(),
+            info: None,
         },
     ];
 

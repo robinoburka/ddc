@@ -14,6 +14,7 @@ pub struct DiscoveryDefinition {
     pub discovery: bool,
     pub description: String,
     pub lang: Language,
+    pub info: Option<&'static str>,
 }
 
 #[derive(Debug)]

@@ -182,6 +182,7 @@ impl<L: PathLoader> DiscoveryManager<L> {
                         path: dd.path.clone(),
                         last_update,
                         size,
+                        info: dd.info,
                     });
                     tx.send(r).unwrap();
                 }
