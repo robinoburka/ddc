@@ -38,11 +38,16 @@ enum RunningState {
     Done,
 }
 
+#[derive(Debug, PartialEq, Eq)]
+enum Modal {
+    Help,
+}
+
 #[derive(Debug, Default, PartialEq, Eq)]
 enum UiMode {
     #[default]
     Normal,
-    Help,
+    Modal(Modal),
 }
 
 #[derive(PartialEq)]
@@ -195,10 +200,9 @@ impl App {
                 Message::Help => self.help(),
                 _ => {}
             },
-            UiMode::Help => match msg {
+            UiMode::Modal(_) => match msg {
                 Message::Refresh => {}
                 Message::Quit => self.quit(),
-                Message::Help => self.help(),
                 Message::Close => self.close(),
                 _ => {}
             },
@@ -421,10 +425,7 @@ impl App {
     }
 
     fn help(&mut self) {
-        self.mode = match self.mode {
-            UiMode::Normal => UiMode::Help,
-            UiMode::Help => UiMode::Normal,
-        };
+        self.mode = UiMode::Modal(Modal::Help);
     }
 
     fn close(&mut self) {
@@ -453,9 +454,7 @@ impl App {
             },
         }
         self.render_footer(frame, chunks[2]);
-        if self.mode == UiMode::Help {
-            self.render_help_popup(frame, chunks[1]);
-        }
+        self.render_modal(frame, chunks[1]);
     }
 
     fn create_layout(&self, area: Rect) -> Vec<Rect> {
@@ -621,6 +620,14 @@ impl App {
         frame.render_widget(footer, area);
     }
 
+    fn render_modal(&self, frame: &mut Frame, area: Rect) {
+        if let UiMode::Modal(modal) = &self.mode {
+            match modal {
+                Modal::Help => self.render_help_popup(frame, area),
+            }
+        }
+    }
+
     fn render_help_popup(&self, frame: &mut Frame, area: Rect) {
         let area = popup_area_clamped(area, 70, 150, 80, 22, 40, 60);
         let help = Paragraph::new(vec![
@@ -721,7 +728,7 @@ impl App {
             Line::from(vec![
                 Span::styled("?", Style::default().fg(Color::Yellow)),
                 Span::raw("         "),
-                Span::raw("Show/close the help pop-up window"),
+                Span::raw("Show the help pop-up window"),
             ]),
             Line::from(vec![
                 Span::styled("q", Style::default().fg(Color::Yellow)),
