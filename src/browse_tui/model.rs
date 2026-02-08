@@ -1,6 +1,7 @@
 use std::path::PathBuf;
+use std::time::SystemTime;
 
-use ratatui::widgets::{ListState, ScrollbarState, TableState};
+use ratatui::widgets::{ScrollbarState, TableState};
 
 use crate::discovery::{ProjectResult, ToolingResult};
 use crate::file_info::FileInfo;
@@ -26,7 +27,7 @@ pub(super) struct Browser {
 
 #[derive(Debug)]
 pub(super) struct DirectoryBrowserFrame {
-    pub(super) state: ListState,
+    pub(super) state: TableState,
     pub(super) scroll_state: ScrollbarState,
     pub(super) cwd: PathBuf,
     pub(super) directory_list: Vec<DirItem>,
@@ -38,6 +39,7 @@ pub(super) struct DirItem {
     pub(super) path: PathBuf,
     pub(super) is_directory: bool,
     pub(super) size: Option<u64>,
+    pub(super) last_update: Option<SystemTime>,
 }
 
 impl DirItem {
@@ -60,6 +62,7 @@ impl DirItem {
             } else {
                 file_info.size
             },
+            last_update: file_info.touched,
         }
     }
 }

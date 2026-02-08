@@ -11,8 +11,8 @@ use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{
-    Block, Borders, Cell, Clear, List, ListItem, ListState, Padding, Row, Scrollbar,
-    ScrollbarOrientation, ScrollbarState, Table, TableState, Tabs, Wrap,
+    Block, Borders, Cell, Clear, Padding, Row, Scrollbar, ScrollbarOrientation, ScrollbarState,
+    Table, TableState, Tabs, Wrap,
 };
 use ratatui::{
     DefaultTerminal, Frame,
@@ -408,7 +408,7 @@ impl App {
             return;
         }
 
-        let mut browser_sate = ListState::default();
+        let mut browser_sate = TableState::default();
         browser_sate.select(Some(0));
 
         self.browser.frames.push(DirectoryBrowserFrame {
@@ -930,32 +930,53 @@ fn render_results<T>(
 }
 
 fn render_directory(frame: &mut Frame, area: Rect, directory_frame: &mut DirectoryBrowserFrame) {
-    let list_items: Vec<ListItem> = directory_frame
+    let directory_size: u64 = directory_frame
         .directory_list
         .iter()
-        .map(|path| create_directory_list_item(path))
+        .filter_map(|di| di.size)
+        .sum();
+    let rows: Vec<_> = directory_frame
+        .directory_list
+        .iter()
+        .map(|di| create_directory_list_item(di, directory_size))
         .collect();
 
-    let list = List::new(list_items)
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title(" Directory List ")
-                .title_style(Style::default().fg(Color::LightYellow))
-                .border_style(Style::default().fg(Color::LightYellow)),
-        )
-        .highlight_style(
+    let table = Table::new(
+        rows,
+        &[
+            Constraint::Length(3),
+            Constraint::Percentage(60),
+            Constraint::Length(8),
+            Constraint::Length(10),
+            Constraint::Length(20),
+        ],
+    )
+    .header(
+        Row::new(vec!["", "Item", "     %", "Size", "Last modified"]).style(
             Style::default()
-                .bg(Color::Blue)
-                .fg(Color::White)
+                .fg(Color::Blue)
                 .add_modifier(Modifier::BOLD),
-        )
-        .highlight_symbol("► ");
+        ),
+    )
+    .block(
+        Block::default()
+            .borders(Borders::ALL)
+            .title(" Directory List ")
+            .title_style(Style::default().fg(Color::LightYellow))
+            .border_style(Style::default().fg(Color::LightYellow)),
+    )
+    .row_highlight_style(
+        Style::default()
+            .bg(Color::Blue)
+            .fg(Color::White)
+            .add_modifier(Modifier::BOLD),
+    )
+    .highlight_symbol("► ");
 
-    frame.render_stateful_widget(list, area, &mut directory_frame.state);
+    frame.render_stateful_widget(table, area, &mut directory_frame.state);
 
     let needs_scroll =
-        directory_frame.directory_list.len() > area.height.saturating_sub(2) as usize;
+        directory_frame.directory_list.len() > area.height.saturating_sub(3) as usize;
     if needs_scroll {
         let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
             .begin_symbol(Some("↑"))
@@ -966,28 +987,31 @@ fn render_directory(frame: &mut Frame, area: Rect, directory_frame: &mut Directo
     }
 }
 
-fn create_directory_list_item<'a>(item: &'a DirItem) -> ListItem<'a> {
+fn create_directory_list_item<'a>(item: &'a DirItem, dir_size: u64) -> Row<'a> {
     let (icon, name_style) = if item.is_directory {
         ("📁", Style::default().fg(Color::Cyan))
     } else {
         ("📄", Style::default())
     };
-
-    let size_text = item
+    let size = item.size.map(size_cell).unwrap_or_else(|| Cell::from("?"));
+    let percent = item
         .size
-        .map(|size| format_size(size, DECIMAL))
-        .unwrap_or_else(|| "?".to_string());
+        .map(|size| {
+            if dir_size == 0 {
+                0.0
+            } else {
+                (size as f64) * 100.0 / (dir_size as f64)
+            }
+        })
+        .unwrap_or_default();
 
-    let content = Line::from(vec![
-        Span::raw(format!("{} ", icon)),
-        Span::styled(&item.name, name_style),
-        Span::styled(
-            format!(" ({})", size_text),
-            Style::default().add_modifier(Modifier::DIM),
-        ),
-    ]);
-
-    ListItem::new(content)
+    Row::new(vec![
+        Cell::from(icon.to_string()),
+        Cell::from(Span::styled(&item.name, name_style)),
+        Cell::from(format!("{:>6.2}", percent)),
+        size,
+        last_update_cell(now(), item.last_update),
+    ])
 }
 
 fn popup_area_clamped(
