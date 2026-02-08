@@ -12,7 +12,7 @@ pub(super) enum DiscoveryDefinitionType {
 pub struct DiscoveryDefinition {
     pub path: PathBuf,
     pub discovery: bool,
-    pub description: String,
+    pub description: &'static str,
     pub lang: Language,
     pub info: Option<&'static str>,
 }
