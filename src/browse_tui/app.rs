@@ -868,7 +868,7 @@ struct TableConfig<'a, T> {
 fn render_projects(frame: &mut Frame, area: Rect, tab: &mut ResultsTab<ProjectResult>) {
     let table_config = TableConfig {
         title: " Projects ",
-        header: vec!["", "Project", "Size", "Last update", "Parent size"],
+        header: vec!["", "Project", "Size", "Last project update", "Parent size"],
         column_sizes: &[
             Constraint::Length(3),
             Constraint::Percentage(60),
@@ -894,7 +894,7 @@ fn create_project_row<'a>(result: &'a ProjectResult) -> Row<'a> {
 fn render_tooling(frame: &mut Frame, area: Rect, tab: &mut ResultsTab<ToolingResult>) {
     let table_config = TableConfig {
         title: " Tools ",
-        header: vec!["", "Tool", "Size", "Last update", "Info"],
+        header: vec!["", "Tool", "Size", "Last project update", "Info"],
         column_sizes: &[
             Constraint::Length(3),
             Constraint::Percentage(60),
@@ -926,7 +926,7 @@ fn create_tooling_row<'a>(result: &'a ToolingResult) -> Row<'a> {
 fn render_vcs(frame: &mut Frame, area: Rect, tab: &mut ResultsTab<VcsResult>) {
     let table_config = TableConfig {
         title: " Version Controlled Directories ",
-        header: vec!["Path", "Size", "Last update", "VCS dir size"],
+        header: vec!["Path", "Size", "Last project update", "VCS dir size"],
         column_sizes: &[
             Constraint::Percentage(60),
             Constraint::Length(10),
