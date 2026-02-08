@@ -22,7 +22,7 @@ pub struct ProjectResult {
 
 #[derive(Debug)]
 pub struct ToolingResult {
-    pub description: String,
+    pub description: &'static str,
     pub path: PathBuf,
     pub lang: Language,
     pub size: u64,

@@ -83,7 +83,7 @@ struct Record {
 #[derive(Tabled)]
 struct ToolingRecord {
     #[tabled(rename = "Description")]
-    description: String,
+    description: &'static str,
     #[tabled(inline)]
     record: Record,
 }
@@ -108,7 +108,7 @@ impl From<&ProjectResult> for Record {
 impl From<&ToolingResult> for ToolingRecord {
     fn from(value: &ToolingResult) -> Self {
         Self {
-            description: value.description.clone(),
+            description: value.description,
             record: Record {
                 lang: value.lang.to_string(),
                 time: value.last_update,

@@ -26,7 +26,7 @@ pub fn default_discovery_definitions(home: &Path) -> Vec<DiscoveryDefinition> {
         DiscoveryDefinition {
             lang: Language::Rust,
             discovery: false,
-            description: "Cargo registry".into(),
+            description: "Cargo registry",
             path: ".cargo/registry".into(),
             info: Some(CARGO_REGISTRY_INFO),
         },
@@ -36,7 +36,7 @@ pub fn default_discovery_definitions(home: &Path) -> Vec<DiscoveryDefinition> {
         DiscoveryDefinition {
             lang: Language::Python,
             discovery: false,
-            description: "Poetry cache".into(),
+            description: "Poetry cache",
             path: "Library/Caches/pypoetry".into(),
             info: Some(POETRY_CACHE_INFO),
         },
@@ -44,7 +44,7 @@ pub fn default_discovery_definitions(home: &Path) -> Vec<DiscoveryDefinition> {
         DiscoveryDefinition {
             lang: Language::Python,
             discovery: true,
-            description: "Poetry virtualenvs".into(),
+            description: "Poetry virtualenvs",
             path: "Library/Caches/pypoetry/virtualenvs".into(),
             info: None,
         },
@@ -52,7 +52,7 @@ pub fn default_discovery_definitions(home: &Path) -> Vec<DiscoveryDefinition> {
         DiscoveryDefinition {
             lang: Language::Python,
             discovery: false,
-            description: "Poetry cache".into(),
+            description: "Poetry cache",
             path: ".cache/pypoetry".into(),
             info: Some(POETRY_CACHE_INFO),
         },
@@ -60,7 +60,7 @@ pub fn default_discovery_definitions(home: &Path) -> Vec<DiscoveryDefinition> {
         DiscoveryDefinition {
             lang: Language::Python,
             discovery: true,
-            description: "Poetry virtualenvs".into(),
+            description: "Poetry virtualenvs",
             path: ".cache/pypoetry/virtualenvs".into(),
             info: None,
         },
@@ -68,7 +68,7 @@ pub fn default_discovery_definitions(home: &Path) -> Vec<DiscoveryDefinition> {
         DiscoveryDefinition {
             lang: Language::Python,
             discovery: false,
-            description: "uv cache".into(),
+            description: "uv cache",
             path: ".cache/uv".into(),
             info: Some(UV_CACHE_INFO),
         },
@@ -76,7 +76,7 @@ pub fn default_discovery_definitions(home: &Path) -> Vec<DiscoveryDefinition> {
         DiscoveryDefinition {
             lang: Language::Python,
             discovery: false,
-            description: "uv Python downloads".into(),
+            description: "uv Python downloads",
             path: ".local/share/uv/python".into(),
             info: Some(UV_PYTHON_INSTALLATIONS_INFO),
         },
@@ -86,7 +86,7 @@ pub fn default_discovery_definitions(home: &Path) -> Vec<DiscoveryDefinition> {
         DiscoveryDefinition {
             lang: Language::JS,
             discovery: false,
-            description: "NPM cache".into(),
+            description: "NPM cache",
             path: ".npm".into(),
             info: None,
         },

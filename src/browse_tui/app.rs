@@ -874,7 +874,7 @@ fn create_tooling_row<'a>(result: &'a ToolingResult) -> Row<'a> {
     Row::new(vec![
         Cell::from(format!("{} ", result.lang)),
         Cell::from(Line::from(vec![
-            Span::raw(&result.description),
+            Span::raw(result.description),
             Span::styled(
                 format!(" ({})", result.path.display()),
                 Style::default().add_modifier(Modifier::DIM),

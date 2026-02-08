@@ -239,7 +239,7 @@ fn static_detector<R>(
             let size = db.iter_dir(&dd.path).filter_map(|fi| fi.size).sum();
             let last_update = db.iter_dir(&dd.path).filter_map(|fi| fi.touched).max();
             let r = DiscoveryResultEnvelop::Tool(ToolingResult {
-                description: dd.description.clone(),
+                description: dd.description,
                 lang: dd.lang,
                 path: dd.path.clone(),
                 last_update,
