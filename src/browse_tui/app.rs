@@ -38,13 +38,13 @@ enum RunningState {
     Done,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug)]
 enum Modal {
     Help,
-    Info,
+    Info(PopUpState),
 }
 
-#[derive(Debug, Default, PartialEq, Eq)]
+#[derive(Debug, Default)]
 enum UiMode {
     #[default]
     Normal,
