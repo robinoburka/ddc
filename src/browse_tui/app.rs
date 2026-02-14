@@ -20,7 +20,9 @@ use ratatui::{
     widgets::Paragraph,
 };
 
+use crate::browse_tui::helpers;
 use crate::browse_tui::model::{Browser, DirItem, DirectoryBrowserFrame, ResultsTab, Tab};
+use crate::browse_tui::widgets::{PopUp, PopUpState};
 use crate::discovery::{ProjectResult, ToolingResult};
 use crate::display_tools::{ColorCode, get_size_color_code, get_time_color_code};
 use crate::files_db::FilesDB;
@@ -208,6 +210,12 @@ impl App {
             },
             UiMode::Modal(_) => match msg {
                 Message::Refresh => {}
+                Message::MoveUp => self.move_up(),
+                Message::MoveDown => self.move_down(),
+                Message::PageUp => self.page_up(),
+                Message::PageDown => self.page_down(),
+                Message::Home => self.home(),
+                Message::End => self.end(),
                 Message::Quit => self.quit(),
                 Message::Close => self.close(),
                 _ => {}
@@ -246,13 +254,17 @@ impl App {
     }
 
     fn navigate(&mut self, nav: Navigation) {
-        match self.browser.frames.last_mut() {
-            Some(frame) => Self::navigate_browser(frame, nav),
-            None => match self.tabs.get_mut(self.selected_tab) {
-                Some(Tab::Projects(tab)) => Self::navigate_tab(tab, nav),
-                Some(Tab::Tooling(tab)) => Self::navigate_tab(tab, nav),
-                None => panic!("Tried to select non-existent tab. This shouldn't happen."),
+        match self.mode {
+            UiMode::Normal => match self.browser.frames.last_mut() {
+                Some(frame) => Self::navigate_browser(frame, nav),
+                None => match self.tabs.get_mut(self.selected_tab) {
+                    Some(Tab::Projects(tab)) => Self::navigate_tab(tab, nav),
+                    Some(Tab::Tooling(tab)) => Self::navigate_tab(tab, nav),
+                    None => panic!("Tried to select non-existent tab. This shouldn't happen."),
+                },
             },
+            UiMode::Modal(Modal::Info(ref mut state)) => Self::navigate_modal(state, nav),
+            UiMode::Modal(Modal::Help) => {}
         }
     }
 
@@ -318,6 +330,29 @@ impl App {
             Navigation::End => {
                 frame.state.select_last();
                 frame.scroll_state.last();
+            }
+        }
+    }
+
+    fn navigate_modal(modal: &mut PopUpState, nav: Navigation) {
+        match nav {
+            Navigation::Up => {
+                modal.up();
+            }
+            Navigation::Down => {
+                modal.down();
+            }
+            Navigation::PageUp(_) => {
+                modal.page_up();
+            }
+            Navigation::PageDown(_) => {
+                modal.page_down();
+            }
+            Navigation::Home => {
+                modal.home();
+            }
+            Navigation::End => {
+                modal.end();
             }
         }
     }
@@ -445,7 +480,7 @@ impl App {
                 .and_then(|r| r.info.as_ref())
                 .is_some()
         {
-            self.mode = UiMode::Modal(Modal::Info);
+            self.mode = UiMode::Modal(Modal::Info(PopUpState::default()));
         } else {
             self.error_message = Some(String::from("There is no info for this item."))
         }
@@ -643,17 +678,31 @@ impl App {
         frame.render_widget(footer, area);
     }
 
-    fn render_modal(&self, frame: &mut Frame, area: Rect) {
-        if let UiMode::Modal(modal) = &self.mode {
+    fn render_modal(&mut self, frame: &mut Frame, area: Rect) {
+        if let UiMode::Modal(modal) = &mut self.mode {
             match modal {
                 Modal::Help => self.render_help_popup(frame, area),
-                Modal::Info => self.render_info_popup(frame, area),
+                Modal::Info(modal_state) => {
+                    let text = if let Some(Tab::Tooling(tab)) = self.tabs.get(self.selected_tab)
+                        && let Some(info_msg) = tab
+                            .state
+                            .selected()
+                            .and_then(|i| tab.results.get(i))
+                            .and_then(|r| r.info.as_ref())
+                    {
+                        info_msg
+                    } else {
+                        // This should be a dead branch.
+                        ""
+                    };
+                    render_info_popup(frame, area, modal_state, text)
+                }
             }
         }
     }
 
     fn render_help_popup(&self, frame: &mut Frame, area: Rect) {
-        let area = popup_area_clamped(area, 70, 150, 80, 22, 40, 60);
+        let area = helpers::popup_area_clamped(area, 70, 150, 80, 22, 40, 60);
         let help = Paragraph::new(vec![
             Line::from(vec![
                 Span::styled("d", Style::default().fg(Color::Yellow)),
@@ -784,43 +833,6 @@ impl App {
 
         frame.render_widget(Clear, area);
         frame.render_widget(help, area);
-    }
-    fn render_info_popup(&self, frame: &mut Frame, area: Rect) {
-        let area = popup_area_clamped(area, 70, 150, 80, 22, 40, 60);
-        let msg = if let Some(Tab::Tooling(tab)) = self.tabs.get(self.selected_tab)
-            && let Some(info_msg) = tab
-                .state
-                .selected()
-                .and_then(|i| tab.results.get(i))
-                .and_then(|r| r.info.as_ref())
-        {
-            info_msg
-        } else {
-            // This should be a dead branch.
-            ""
-        };
-
-        let message_lines = msg.lines().map(Line::from).collect::<Vec<_>>();
-
-        let info = Paragraph::new(message_lines)
-            .wrap(Wrap { trim: false })
-            .block(
-                Block::bordered()
-                    .padding(Padding::symmetric(2, 1))
-                    .title_style(Style::default().fg(Color::LightBlue))
-                    .title(Line::from(" Info ").alignment(Alignment::Left))
-                    .title(
-                        Line::from(" Esc ").alignment(Alignment::Right).style(
-                            Style::default()
-                                .fg(Color::Red)
-                                .add_modifier(Modifier::ITALIC),
-                        ),
-                    )
-                    .border_style(Style::default().fg(Color::LightBlue)),
-            );
-
-        frame.render_widget(Clear, area);
-        frame.render_widget(info, area);
     }
 }
 
@@ -1017,47 +1029,9 @@ fn create_directory_list_item<'a>(item: &'a DirItem, dir_size: u64) -> Row<'a> {
     ])
 }
 
-fn popup_area_clamped(
-    area: Rect,
-    min_width: u16,
-    max_width: u16,
-    width_percent: u16,
-    min_height: u16,
-    max_height: u16,
-    height_percent: u16,
-) -> Rect {
-    fn clamp_percent(total: u16, percent: u16, min: u16, max: u16) -> u16 {
-        if total == 0 {
-            return 0;
-        }
-
-        let percent_size = total.saturating_mul(percent) / 100;
-        let clamped = percent_size.clamp(min, max);
-        clamped.min(total)
-    }
-
-    let width = clamp_percent(area.width, width_percent, min_width, max_width);
-    let height = clamp_percent(area.height, height_percent, min_height, max_height);
-
-    let vertical = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Min(0),
-            Constraint::Length(height),
-            Constraint::Min(0),
-        ])
-        .split(area);
-
-    let horizontal = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([
-            Constraint::Min(0),
-            Constraint::Length(width),
-            Constraint::Min(0),
-        ])
-        .split(vertical[1]);
-
-    horizontal[1]
+fn render_info_popup(frame: &mut Frame, area: Rect, state: &mut PopUpState, text: &'static str) {
+    let pop_up = PopUp::new(" Info ", text);
+    frame.render_stateful_widget(pop_up, area, state);
 }
 
 fn size_cell(size: u64) -> Cell<'static> {
