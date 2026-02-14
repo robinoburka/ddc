@@ -100,24 +100,26 @@ impl App {
         tooling_data: Vec<ToolingResult>,
         db: FilesDB,
     ) -> Self {
-        let mut projects_state = TableState::default();
-        projects_state.select(Some(0));
-
-        let mut tooling_state = TableState::default();
-        tooling_state.select(Some(0));
-
         Self {
             db,
             running_state: RunningState::Running,
             mode: UiMode::Normal,
             tabs: vec![
                 Tab::Projects(ResultsTab {
-                    state: projects_state,
+                    state: {
+                        let mut projects_state = TableState::default();
+                        projects_state.select(Some(0));
+                        projects_state
+                    },
                     scroll_state: ScrollbarState::new(projects_data.len()),
                     results: projects_data,
                 }),
                 Tab::Tooling(ResultsTab {
-                    state: tooling_state,
+                    state: {
+                        let mut tooling_state = TableState::default();
+                        tooling_state.select(Some(0));
+                        tooling_state
+                    },
                     scroll_state: ScrollbarState::new(tooling_data.len()),
                     results: tooling_data,
                 }),
@@ -408,11 +410,12 @@ impl App {
             return;
         }
 
-        let mut browser_sate = TableState::default();
-        browser_sate.select(Some(0));
-
         self.browser.frames.push(DirectoryBrowserFrame {
-            state: browser_sate,
+            state: {
+                let mut browser_sate = TableState::default();
+                browser_sate.select(Some(0));
+                browser_sate
+            },
             scroll_state: ScrollbarState::new(directory_list.len()),
             cwd: path.clone(),
             directory_list,
