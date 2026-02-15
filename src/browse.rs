@@ -10,6 +10,7 @@ use crate::config::{ConfigError, load_config_file};
 use crate::discovery::DiscoveryResults;
 use crate::discovery::{DiscoveryManager, ExternalDiscoveryDefinition};
 use crate::display::display_progress_bar;
+use crate::vcs_postprocess::vcs_postprocess;
 
 #[derive(thiserror::Error, Debug)]
 pub enum BrowseError {
@@ -74,11 +75,12 @@ pub fn browse(
 }
 
 fn start_tui(discovery_results: DiscoveryResults) -> io::Result<()> {
+    let vcs_results = vcs_postprocess(&discovery_results.projects, discovery_results.vcs);
     ratatui::run(|terminal| {
         App::new(
             discovery_results.projects,
             discovery_results.tools,
-            discovery_results.vcs,
+            vcs_results,
             // Already checked in browse()
             discovery_results.db.unwrap(),
         )

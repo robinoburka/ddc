@@ -12,7 +12,7 @@ pub struct DiscoveryResults {
     pub db: Option<FilesDB>,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct ProjectResult {
     pub path: PathBuf,
     pub lang: Language,

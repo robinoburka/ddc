@@ -25,6 +25,7 @@ mod files_db;
 mod generate_config;
 mod loader;
 mod logging;
+mod vcs_postprocess;
 
 fn main() -> anyhow::Result<()> {
     let args = CliArgs::parse();

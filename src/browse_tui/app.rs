@@ -19,12 +19,14 @@ use ratatui::{
     crossterm::event::{self, Event, KeyCode},
     widgets::Paragraph,
 };
+
 use crate::browse_tui::helpers;
 use crate::browse_tui::model::{Browser, DirItem, DirectoryBrowserFrame, ResultsTab, Tab};
 use crate::browse_tui::widgets::{PopUp, PopUpState};
-use crate::discovery::{ProjectResult, ToolingResult, VcsResult};
+use crate::discovery::{ProjectResult, ToolingResult};
 use crate::display_tools::{ColorCode, get_size_color_code, get_time_color_code};
 use crate::files_db::FilesDB;
+use crate::vcs_postprocess::EnrichedVcsResult;
 
 static NOW: OnceLock<SystemTime> = OnceLock::new();
 
@@ -100,7 +102,7 @@ impl App {
     pub fn new(
         projects_data: Vec<ProjectResult>,
         tooling_data: Vec<ToolingResult>,
-        vcs_data: Vec<VcsResult>,
+        vcs_data: Vec<EnrichedVcsResult>,
         db: FilesDB,
     ) -> Self {
         Self {
@@ -938,27 +940,59 @@ fn create_tooling_row<'a>(result: &'a ToolingResult) -> Row<'a> {
     ])
 }
 
-fn render_vcs(frame: &mut Frame, area: Rect, tab: &mut ResultsTab<VcsResult>) {
+fn render_vcs(frame: &mut Frame, area: Rect, tab: &mut ResultsTab<EnrichedVcsResult>) {
     let table_config = TableConfig {
         title: " Version Controlled Directories ",
-        header: vec!["Path", "Size", "Last project update", "VCS dir size"],
+        header: vec![
+            "Path",
+            "Size",
+            "Projects/Files/VCS dir",
+            "Last project update",
+        ],
         column_sizes: &[
             Constraint::Percentage(60),
             Constraint::Length(10),
+            Constraint::Length(30),
             Constraint::Length(20),
-            Constraint::Length(12),
         ],
         row_fn: create_vcs_row,
     };
     render_results(frame, area, tab, &table_config);
 }
 
-fn create_vcs_row<'a>(result: &'a VcsResult) -> Row<'a> {
+fn create_vcs_row<'a>(result: &'a EnrichedVcsResult) -> Row<'a> {
+    let mut line = vec![Span::from(result.path.display().to_string())];
+    if !result.matched_projects.is_empty() {
+        line.push(Span::from("  (Contains projects:"));
+        for project in result.matched_projects.iter() {
+            line.push(Span::from(format!(" {}", project.lang)));
+        }
+        line.push(Span::from(")"));
+    }
+
+    let projects_sizes_sum = result.matched_projects.iter().map(|p| p.size).sum::<u64>();
+
+    let just_files = result
+        .size
+        .saturating_sub(result.vcs_size)
+        .saturating_sub(projects_sizes_sum);
+    let percents = vec![
+        // Project files
+        projects_sizes_sum as f64 * 100.0 / result.size as f64,
+        // Files
+        just_files as f64 * 100.0 / result.size as f64,
+        // VCS size
+        result.vcs_size as f64 * 100.0 / result.size as f64,
+    ];
+
+    let colors = vec![Color::Red, Color::Green, Color::DarkGray];
+
     Row::new(vec![
-        Cell::from(Line::from(result.path.display().to_string())),
+        Cell::from(Line::from(line)),
         size_cell(result.size),
+        Cell::from(colored_percent_bar(30, percents, colors)),
         last_update_cell(now(), result.last_update),
-        parent_size_cell(Some(result.vcs_size)),
+        // parent_size_cell(Some(result.vcs_size)),
     ])
 }
 
@@ -1151,6 +1185,42 @@ pub fn percent_bar(width: usize, percent: f64) -> Line<'static> {
         spans.push(Span::from("█"));
     }
     for _ in filled_len..width {
+        spans.push(Span::from("░"));
+    }
+
+    Line::from(spans)
+}
+
+pub fn colored_percent_bar(width: usize, percents: Vec<f64>, colors: Vec<Color>) -> Line<'static> {
+    assert_eq!(
+        percents.len(),
+        colors.len(),
+        "Percents and colors must match"
+    );
+
+    let mut spans = Vec::with_capacity(width);
+
+    // Calculate total characters available for the bar
+    let total_width = width;
+
+    // Keep track of how many characters we've filled
+    let mut filled_chars = 0;
+
+    for (i, &percent) in percents.iter().enumerate() {
+        let color = colors[i];
+        let segment_len = ((percent / 100.0) * (total_width as f64)).round() as usize;
+
+        for _ in 0..segment_len {
+            if filled_chars >= width {
+                break; // prevent overshooting total width
+            }
+            spans.push(Span::styled("█", Style::default().fg(color)));
+            filled_chars += 1;
+        }
+    }
+
+    // Fill remaining space with empty characters
+    for _ in filled_chars..width {
         spans.push(Span::from("░"));
     }
 
