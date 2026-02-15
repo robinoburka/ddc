@@ -961,13 +961,14 @@ fn render_directory(frame: &mut Frame, area: Rect, directory_frame: &mut Directo
         &[
             Constraint::Length(3),
             Constraint::Percentage(60),
-            Constraint::Length(8),
+            Constraint::Length(6),
+            Constraint::Length(20),
             Constraint::Length(10),
             Constraint::Length(20),
         ],
     )
     .header(
-        Row::new(vec!["", "Item", "     %", "Size", "Last modified"]).style(
+        Row::new(vec!["", "Item", "", "", "Size", "Last modified"]).style(
             Style::default()
                 .fg(Color::Blue)
                 .add_modifier(Modifier::BOLD),
@@ -1020,10 +1021,16 @@ fn create_directory_list_item<'a>(item: &'a DirItem, dir_size: u64) -> Row<'a> {
         })
         .unwrap_or_default();
 
+    let bar = percent_bar(20, percent);
+
     Row::new(vec![
         Cell::from(icon.to_string()),
         Cell::from(Span::styled(&item.name, name_style)),
-        Cell::from(format!("{:>6.2}", percent)),
+        Cell::from(Line::from(vec![
+            Span::from(format!("{:>5.1}", percent)),
+            Span::styled("%", Style::default().add_modifier(Modifier::DIM)),
+        ])),
+        Cell::from(bar),
         size,
         last_update_cell(now(), item.last_update),
     ])
@@ -1071,4 +1078,19 @@ fn parent_size_cell(parent_size: Option<u64>) -> Cell<'static> {
         .unwrap_or_default();
 
     Cell::from(text).style(Style::default().add_modifier(Modifier::DIM))
+}
+
+pub fn percent_bar(width: usize, percent: f64) -> Line<'static> {
+    let filled_len = ((width as f64) * percent / 100.0).round() as usize;
+
+    let mut spans = Vec::new();
+
+    for _ in 0..filled_len {
+        spans.push(Span::from("█"));
+    }
+    for _ in filled_len..width {
+        spans.push(Span::from("░"));
+    }
+
+    Line::from(spans)
 }
