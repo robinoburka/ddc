@@ -3,15 +3,16 @@ use std::time::SystemTime;
 
 use ratatui::widgets::{ScrollbarState, TableState};
 
-use crate::discovery::{ProjectResult, ToolingResult, VcsResult};
+use crate::discovery::{ProjectResult, ToolingResult};
 use crate::file_info::FileInfo;
 use crate::files_db::FilesDB;
+use crate::vcs_postprocess::EnrichedVcsResult;
 
 #[derive(Debug)]
 pub(super) enum Tab {
     Projects(ResultsTab<ProjectResult>),
     Tooling(ResultsTab<ToolingResult>),
-    Vcs(ResultsTab<VcsResult>),
+    Vcs(ResultsTab<EnrichedVcsResult>),
 }
 
 #[derive(Debug)]
