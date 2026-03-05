@@ -1,6 +1,7 @@
 mod app;
+mod component;
+mod components;
 mod helpers;
-mod model;
-mod widgets;
+mod message;
 
 pub use app::App;

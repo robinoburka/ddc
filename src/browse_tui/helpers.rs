@@ -1,6 +1,21 @@
-use ratatui::layout::{Constraint, Direction, Layout, Rect};
+use std::sync::OnceLock;
+use std::time::SystemTime;
 
-pub(super) fn popup_area_clamped(
+use chrono::{DateTime, Local};
+use humansize::{DECIMAL, format_size};
+use ratatui::layout::{Constraint, Direction, Layout, Rect};
+use ratatui::prelude::{Color, Line, Modifier, Span, Style};
+use ratatui::widgets::Cell;
+
+use crate::display_tools::{ColorCode, get_size_color_code, get_time_color_code};
+
+static NOW: OnceLock<SystemTime> = OnceLock::new();
+
+pub fn now() -> SystemTime {
+    *NOW.get_or_init(SystemTime::now)
+}
+
+pub fn popup_area_clamped(
     area: Rect,
     min_width: u16,
     max_width: u16,
@@ -41,4 +56,58 @@ pub(super) fn popup_area_clamped(
         .split(vertical[1]);
 
     horizontal[1]
+}
+
+pub fn size_cell(size: u64) -> Cell<'static> {
+    let text = format_size(size, DECIMAL);
+    let color = match get_size_color_code(size) {
+        ColorCode::None => Color::Gray,
+        ColorCode::Low => Color::Green,
+        ColorCode::Medium => Color::Yellow,
+        ColorCode::High => Color::Red,
+    };
+
+    Cell::from(text).style(Style::default().fg(color))
+}
+
+pub fn last_update_cell(now: SystemTime, last: Option<SystemTime>) -> Cell<'static> {
+    let text = last
+        .map(|t| {
+            DateTime::<Local>::from(t)
+                .format("%Y-%m-%d %H:%M:%S")
+                .to_string()
+        })
+        .unwrap_or_default();
+
+    let color = match get_time_color_code(&now, &last) {
+        ColorCode::None => Color::Gray,
+        ColorCode::Low => Color::Green,
+        ColorCode::Medium => Color::Yellow,
+        ColorCode::High => Color::Red,
+    };
+
+    Cell::from(text).style(Style::default().fg(color))
+}
+
+pub fn parent_size_cell(parent_size: Option<u64>) -> Cell<'static> {
+    let text = parent_size
+        .map(|s| format_size(s, DECIMAL))
+        .unwrap_or_default();
+
+    Cell::from(text).style(Style::default().add_modifier(Modifier::DIM))
+}
+
+pub fn percent_bar(width: usize, percent: f64) -> Line<'static> {
+    let filled_len = ((width as f64) * percent / 100.0).round() as usize;
+
+    let mut spans = Vec::new();
+
+    for _ in 0..filled_len {
+        spans.push(Span::from("█"));
+    }
+    for _ in filled_len..width {
+        spans.push(Span::from("░"));
+    }
+
+    Line::from(spans)
 }

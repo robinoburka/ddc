@@ -1,39 +1,24 @@
 use std::io;
 use std::option::Option;
 use std::path::PathBuf;
-use std::sync::OnceLock;
-use std::time::{Duration, SystemTime};
+use std::time::Duration;
 
-use chrono::{DateTime, Local};
-use humansize::{DECIMAL, format_size};
 use ratatui::crossterm::event::KeyEventKind;
-use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
-use ratatui::style::{Color, Modifier, Style};
-use ratatui::text::{Line, Span};
-use ratatui::widgets::{
-    Block, Borders, Cell, Clear, Padding, Row, Scrollbar, ScrollbarOrientation, ScrollbarState,
-    Table, TableState, Tabs, Wrap,
-};
+use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::{
     DefaultTerminal, Frame,
     crossterm::event::{self, Event, KeyCode},
-    widgets::Paragraph,
 };
 
-use crate::browse_tui::helpers;
-use crate::browse_tui::model::{Browser, DirItem, DirectoryBrowserFrame, ResultsTab, Tab};
-use crate::browse_tui::widgets::{PopUp, PopUpState};
+use crate::browse_tui::component::Component;
+use crate::browse_tui::components::{
+    DirectoryBrowser, Footer, Header, HelpModal, InfoModal, ProjectsTab, ToolingTab,
+};
+use crate::browse_tui::message::{AppMessage, Tab};
 use crate::discovery::{ProjectResult, ToolingResult};
-use crate::display_tools::{ColorCode, get_size_color_code, get_time_color_code};
 use crate::files_db::FilesDB;
 
-static NOW: OnceLock<SystemTime> = OnceLock::new();
-
-fn now() -> SystemTime {
-    *NOW.get_or_init(SystemTime::now)
-}
-
-#[derive(Debug, Default, PartialEq, Eq)]
+#[derive(Debug, Default, Eq, PartialEq)]
 enum RunningState {
     #[default]
     Running,
@@ -42,8 +27,8 @@ enum RunningState {
 
 #[derive(Debug)]
 enum Modal {
-    Help,
-    Info(PopUpState),
+    Help(HelpModal),
+    Info(InfoModal),
 }
 
 #[derive(Debug, Default)]
@@ -53,47 +38,29 @@ enum UiMode {
     Modal(Modal),
 }
 
-#[derive(PartialEq)]
+#[derive(Debug)]
 enum Message {
-    MoveUp,
-    MoveDown,
-    PageUp,
-    PageDown,
-    Home,
-    End,
-    Enter,
-    GoBack,
-    Refresh,
-    Quit,
-    SelectTab(usize),
-    EnterParent,
-    Help,
-    Close,
-    Info,
+    AppMessage(AppMessage),
+    ProjectsTab(<ProjectsTab as Component>::Message),
+    ToolingTab(<ToolingTab as Component>::Message),
+    DirectoryBrowser(<DirectoryBrowser as Component>::Message),
+    InfoModal(<InfoModal as Component>::Message),
 }
-
-enum Navigation {
-    Up,
-    Down,
-    PageUp(usize),
-    PageDown(usize),
-    Home,
-    End,
-}
-
-const PROJECTS_TAB: usize = 0;
-const TOOLING_TAB: usize = 1;
 
 #[derive(Debug)]
 pub struct App {
-    db: FilesDB,
+    // Basic application state
     running_state: RunningState,
     mode: UiMode,
-    tabs: Vec<Tab>,
-    selected_tab: usize,
-    browser: Browser,
+    tab: Tab,
+    // Components
+    header: Header,
+    footer: Footer,
+    projects_tab: ProjectsTab,
+    tooling_tab: ToolingTab,
+    browser: DirectoryBrowser,
+    // Helper data
     error_message: Option<String>,
-    page_size: usize,
 }
 
 impl App {
@@ -103,33 +70,15 @@ impl App {
         db: FilesDB,
     ) -> Self {
         Self {
-            db,
-            running_state: RunningState::Running,
-            mode: UiMode::Normal,
-            tabs: vec![
-                Tab::Projects(ResultsTab {
-                    state: {
-                        let mut projects_state = TableState::default();
-                        projects_state.select(Some(0));
-                        projects_state
-                    },
-                    scroll_state: ScrollbarState::new(projects_data.len()),
-                    results: projects_data,
-                }),
-                Tab::Tooling(ResultsTab {
-                    state: {
-                        let mut tooling_state = TableState::default();
-                        tooling_state.select(Some(0));
-                        tooling_state
-                    },
-                    scroll_state: ScrollbarState::new(tooling_data.len()),
-                    results: tooling_data,
-                }),
-            ],
-            selected_tab: PROJECTS_TAB,
-            browser: Browser { frames: vec![] },
+            running_state: RunningState::default(),
+            mode: UiMode::default(),
+            tab: Tab::default(),
+            header: Header::new(Tab::default(), projects_data.len(), tooling_data.len()),
+            footer: Footer::new(),
+            projects_tab: ProjectsTab::new(projects_data),
+            tooling_tab: ToolingTab::new(tooling_data),
+            browser: DirectoryBrowser::new(db),
             error_message: None,
-            page_size: 0,
         }
     }
 
@@ -147,38 +96,14 @@ impl App {
         Ok(())
     }
 
-    fn handle_events(&self) -> io::Result<Option<Message>> {
+    fn handle_events(&mut self) -> io::Result<Option<Message>> {
         if event::poll(Duration::from_millis(100))? {
             match event::read()? {
-                Event::Key(key) => {
-                    if key.kind == KeyEventKind::Press {
-                        return Ok(match key.code {
-                            KeyCode::Char('r') => Some(Message::Refresh),
-                            KeyCode::Char('q') => Some(Message::Quit),
-                            KeyCode::Up | KeyCode::Char('k') => Some(Message::MoveUp),
-                            KeyCode::Down | KeyCode::Char('j') => Some(Message::MoveDown),
-                            KeyCode::Right | KeyCode::Char('l') => Some(Message::Enter),
-                            KeyCode::Left | KeyCode::Char('h') => Some(Message::GoBack),
-                            KeyCode::Char('p') => Some(Message::EnterParent),
-                            KeyCode::PageDown => Some(Message::PageDown),
-                            KeyCode::PageUp => Some(Message::PageUp),
-                            KeyCode::Home => Some(Message::Home),
-                            KeyCode::End => Some(Message::End),
-                            KeyCode::Char('d') | KeyCode::Char('1') => {
-                                Some(Message::SelectTab(PROJECTS_TAB))
-                            }
-                            KeyCode::Char('t') | KeyCode::Char('2') => {
-                                Some(Message::SelectTab(TOOLING_TAB))
-                            }
-                            KeyCode::Char('?') => Some(Message::Help),
-                            KeyCode::Char('i') => Some(Message::Info),
-                            KeyCode::Esc => Some(Message::Close),
-                            _ => None,
-                        });
-                    }
+                Event::Key(key) if key.kind == KeyEventKind::Press => {
+                    return Ok(self.handle_key(key.code));
                 }
                 Event::Resize(_, _) => {
-                    return Ok(Some(Message::Refresh));
+                    return Ok(Some(Message::AppMessage(AppMessage::Refresh)));
                 }
                 _ => {}
             }
@@ -186,42 +111,70 @@ impl App {
         Ok(None)
     }
 
-    fn update(&mut self, msg: Message) -> Option<Message> {
-        // Removes error message from previous update
+    fn handle_key(&mut self, key: KeyCode) -> Option<Message> {
+        let mut message = match key {
+            KeyCode::Char('q') => Some(Message::AppMessage(AppMessage::Quit)),
+            KeyCode::Char('r') => Some(Message::AppMessage(AppMessage::Refresh)),
+            KeyCode::Char('d') | KeyCode::Char('1') => {
+                Some(Message::AppMessage(AppMessage::SelectTab(Tab::Projects)))
+            }
+            KeyCode::Char('t') | KeyCode::Char('2') => {
+                Some(Message::AppMessage(AppMessage::SelectTab(Tab::Tooling)))
+            }
+            KeyCode::Char('?') => Some(Message::AppMessage(AppMessage::OpenHelp)),
+            KeyCode::Esc => Some(Message::AppMessage(AppMessage::CloseModal)),
+            _ => None,
+        };
+        if message.is_none() {
+            message = match &mut self.mode {
+                UiMode::Normal => match (self.browser.is_clear(), self.tab) {
+                    (true, Tab::Projects) => {
+                        self.projects_tab.handle_key(key).map(Message::ProjectsTab)
+                    }
+                    (true, Tab::Tooling) => {
+                        self.tooling_tab.handle_key(key).map(Message::ToolingTab)
+                    }
+                    (false, _) => self.browser.handle_key(key).map(Message::DirectoryBrowser),
+                },
+                UiMode::Modal(Modal::Help(_)) => None,
+                UiMode::Modal(Modal::Info(info_modal)) => {
+                    info_modal.handle_key(key).map(Message::InfoModal)
+                }
+            }
+        }
+        message
+    }
+
+    fn update(&mut self, message: Message) -> Option<Message> {
+        // Clear error message from previous update
         self.error_message = None;
 
-        match self.mode {
-            UiMode::Normal => match msg {
-                Message::Refresh => {}
-                Message::Quit => self.quit(),
-                Message::MoveUp => self.move_up(),
-                Message::MoveDown => self.move_down(),
-                Message::PageUp => self.page_up(),
-                Message::PageDown => self.page_down(),
-                Message::Home => self.home(),
-                Message::End => self.end(),
-                Message::Enter => self.enter(),
-                Message::GoBack => self.go_back(),
-                Message::EnterParent => self.enter_parent(),
-                Message::SelectTab(tab) => self.select_tab(tab),
-                Message::Help => self.help(),
-                Message::Info => self.info(),
-                _ => {}
-            },
-            UiMode::Modal(_) => match msg {
-                Message::Refresh => {}
-                Message::MoveUp => self.move_up(),
-                Message::MoveDown => self.move_down(),
-                Message::PageUp => self.page_up(),
-                Message::PageDown => self.page_down(),
-                Message::Home => self.home(),
-                Message::End => self.end(),
-                Message::Quit => self.quit(),
-                Message::Close => self.close(),
-                _ => {}
-            },
-        };
+        match message {
+            Message::AppMessage(msg) => self.handle_app_message(msg),
+            Message::ProjectsTab(msg) => self.projects_tab.update(msg).map(Message::AppMessage),
+            Message::ToolingTab(msg) => self.tooling_tab.update(msg).map(Message::AppMessage),
+            Message::DirectoryBrowser(msg) => self.browser.update(msg).map(Message::AppMessage),
+            Message::InfoModal(msg) => {
+                if let UiMode::Modal(Modal::Info(info_modal)) = &mut self.mode {
+                    info_modal.update(msg).map(Message::AppMessage)
+                } else {
+                    None
+                }
+            }
+        }
+    }
 
+    fn handle_app_message(&mut self, message: AppMessage) -> Option<Message> {
+        match message {
+            AppMessage::Quit => self.quit(),
+            AppMessage::Refresh => {}
+            AppMessage::SetError(err) => self.error_message = Some(err),
+            AppMessage::OpenHelp => self.open_help(),
+            AppMessage::CloseModal => self.close_modal(),
+            AppMessage::EnterBrowser(path) => self.enter_browser(path),
+            AppMessage::SelectTab(i) => self.select_tab(i),
+            AppMessage::OpenInfo(text) => self.open_info(text),
+        }
         None
     }
 
@@ -229,289 +182,47 @@ impl App {
         self.running_state = RunningState::Done;
     }
 
-    fn move_up(&mut self) {
-        self.navigate(Navigation::Up);
+    fn open_help(&mut self) {
+        self.mode = UiMode::Modal(Modal::Help(HelpModal::new()));
     }
 
-    fn move_down(&mut self) {
-        self.navigate(Navigation::Down);
-    }
-
-    fn page_up(&mut self) {
-        self.navigate(Navigation::PageUp(self.page_size));
-    }
-
-    fn page_down(&mut self) {
-        self.navigate(Navigation::PageDown(self.page_size));
-    }
-
-    fn home(&mut self) {
-        self.navigate(Navigation::Home);
-    }
-
-    fn end(&mut self) {
-        self.navigate(Navigation::End);
-    }
-
-    fn navigate(&mut self, nav: Navigation) {
-        match self.mode {
-            UiMode::Normal => match self.browser.frames.last_mut() {
-                Some(frame) => Self::navigate_browser(frame, nav),
-                None => match self.tabs.get_mut(self.selected_tab) {
-                    Some(Tab::Projects(tab)) => Self::navigate_tab(tab, nav),
-                    Some(Tab::Tooling(tab)) => Self::navigate_tab(tab, nav),
-                    None => panic!("Tried to select non-existent tab. This shouldn't happen."),
-                },
-            },
-            UiMode::Modal(Modal::Info(ref mut state)) => Self::navigate_modal(state, nav),
-            UiMode::Modal(Modal::Help) => {}
-        }
-    }
-
-    fn navigate_tab<T>(tab: &mut ResultsTab<T>, nav: Navigation) {
-        match nav {
-            Navigation::Up => {
-                tab.state.select_previous();
-                tab.scroll_state.prev();
-            }
-            Navigation::Down => {
-                tab.state.select_next();
-                tab.scroll_state.next();
-            }
-            Navigation::PageUp(n) => {
-                tab.state.scroll_up_by(n as u16);
-                tab.scroll_state = tab
-                    .scroll_state
-                    .position(tab.scroll_state.get_position().saturating_sub(n));
-            }
-            Navigation::PageDown(n) => {
-                tab.state.scroll_down_by(n as u16);
-                tab.scroll_state = tab
-                    .scroll_state
-                    .position(tab.scroll_state.get_position().saturating_add(n));
-            }
-            Navigation::Home => {
-                tab.state.select_first();
-                tab.scroll_state.first();
-            }
-            Navigation::End => {
-                tab.state.select_last();
-                tab.scroll_state.last();
-            }
-        }
-    }
-
-    fn navigate_browser(frame: &mut DirectoryBrowserFrame, nav: Navigation) {
-        match nav {
-            Navigation::Up => {
-                frame.state.select_previous();
-                frame.scroll_state.prev();
-            }
-            Navigation::Down => {
-                frame.state.select_next();
-                frame.scroll_state.next();
-            }
-            Navigation::PageUp(n) => {
-                frame.state.scroll_up_by(n as u16);
-                frame.scroll_state = frame
-                    .scroll_state
-                    .position(frame.scroll_state.get_position().saturating_sub(n));
-            }
-            Navigation::PageDown(n) => {
-                frame.state.scroll_down_by(n as u16);
-                frame.scroll_state = frame
-                    .scroll_state
-                    .position(frame.scroll_state.get_position().saturating_add(n));
-            }
-            Navigation::Home => {
-                frame.state.select_first();
-                frame.scroll_state.first();
-            }
-            Navigation::End => {
-                frame.state.select_last();
-                frame.scroll_state.last();
-            }
-        }
-    }
-
-    fn navigate_modal(modal: &mut PopUpState, nav: Navigation) {
-        match nav {
-            Navigation::Up => {
-                modal.up();
-            }
-            Navigation::Down => {
-                modal.down();
-            }
-            Navigation::PageUp(_) => {
-                modal.page_up();
-            }
-            Navigation::PageDown(_) => {
-                modal.page_down();
-            }
-            Navigation::Home => {
-                modal.home();
-            }
-            Navigation::End => {
-                modal.end();
-            }
-        }
-    }
-
-    fn enter(&mut self) {
-        let path = match self.browser.frames.last_mut() {
-            Some(frame) => {
-                let Some(item) = frame
-                    .state
-                    .selected()
-                    .and_then(|i| frame.directory_list.get(i))
-                else {
-                    self.error_message = Some(String::from("No item selected."));
-                    return;
-                };
-
-                if !item.is_directory {
-                    self.error_message = Some(String::from("Item is not a directory."));
-                    return;
-                }
-
-                Some(item.path.clone())
-            }
-            None => match self.tabs.get(self.selected_tab) {
-                Some(Tab::Projects(tab)) => tab
-                    .state
-                    .selected()
-                    .and_then(|i| tab.results.get(i))
-                    .map(|r| r.path.clone()),
-                Some(Tab::Tooling(tab)) => tab
-                    .state
-                    .selected()
-                    .and_then(|i| tab.results.get(i))
-                    .map(|r| r.path.clone()),
-                None => None,
-            },
-        };
-
-        let Some(path) = path else {
-            self.error_message = Some(String::from("No item selected."));
-            return;
-        };
-
-        self.open_directory(path);
-    }
-
-    fn enter_parent(&mut self) {
-        match self.browser.frames.last_mut() {
-            Some(_) => {
-                self.error_message = Some(String::from(
-                    "Parent traversal is implemented only for projects and tools views.",
-                ));
-            }
-            None => {
-                let parent_path = match self.tabs.get(self.selected_tab) {
-                    Some(Tab::Projects(tab)) => tab
-                        .state
-                        .selected()
-                        .and_then(|i| tab.results.get(i))
-                        .and_then(|r| r.parent.as_ref())
-                        .map(|p| p.path.clone()),
-                    Some(Tab::Tooling(tab)) => tab
-                        .state
-                        .selected()
-                        .and_then(|i| tab.results.get(i))
-                        .and_then(|r| r.path.parent())
-                        .map(PathBuf::from),
-                    None => None,
-                };
-
-                let Some(path) = parent_path else {
-                    self.error_message = Some(String::from("Unable to detect parent directory."));
-                    return;
-                };
-
-                self.open_directory(path);
-            }
-        }
-    }
-
-    fn open_directory(&mut self, path: PathBuf) {
-        let directory_list: Vec<_> = self
-            .db
-            .iter_level(&path)
-            .map(|fi| DirItem::from_file_info(&fi, &self.db))
-            .collect();
-
-        if directory_list.is_empty() {
-            self.error_message = Some(String::from("Directory is empty."));
-            return;
-        }
-
-        self.browser.frames.push(DirectoryBrowserFrame {
-            state: {
-                let mut browser_sate = TableState::default();
-                browser_sate.select(Some(0));
-                browser_sate
-            },
-            scroll_state: ScrollbarState::new(directory_list.len()),
-            cwd: path.clone(),
-            directory_list,
-        });
-    }
-
-    fn go_back(&mut self) {
-        self.browser.frames.pop();
-    }
-
-    fn select_tab(&mut self, tab: usize) {
-        self.selected_tab = tab;
-        self.browser.frames.truncate(0);
-    }
-
-    fn help(&mut self) {
-        self.mode = UiMode::Modal(Modal::Help);
-    }
-
-    fn info(&mut self) {
-        if let Some(Tab::Tooling(tab)) = self.tabs.get(self.selected_tab)
-            && self.browser.frames.is_empty()
-            && tab
-                .state
-                .selected()
-                .and_then(|i| tab.results.get(i))
-                .and_then(|r| r.info.as_ref())
-                .is_some()
-        {
-            self.mode = UiMode::Modal(Modal::Info(PopUpState::default()));
-        } else {
-            self.error_message = Some(String::from("There is no info for this item."))
-        }
-    }
-
-    fn close(&mut self) {
+    fn close_modal(&mut self) {
         self.mode = UiMode::Normal;
     }
 
+    fn enter_browser(&mut self, path: PathBuf) {
+        if let Err(msg) = self.browser.open_path(path) {
+            self.error_message = Some(msg);
+        }
+    }
+
+    fn select_tab(&mut self, tab: Tab) {
+        self.mode = UiMode::Normal;
+        self.browser.clear();
+        self.tab = tab;
+    }
+
+    fn open_info(&mut self, text: &'static str) {
+        self.mode = UiMode::Modal(Modal::Info(InfoModal::new(text)))
+    }
+
     fn draw(&mut self, frame: &mut Frame) {
+        // Handle data exchange among components
+        self.header.set_selected_tab(self.tab);
+        self.header
+            .set_browser_path(self.browser.get_current_path());
+        self.footer.set_error(self.error_message.clone());
+
+        // Render the whole app
         let chunks = self.create_layout(frame.area());
 
-        self.render_header(frame, chunks[0]);
-        match self.browser.frames.last_mut() {
-            Some(directory_frame) => {
-                self.page_size = chunks[1].height.saturating_sub(2) as usize;
-                render_directory(frame, chunks[1], directory_frame)
-            }
-            None => match self.tabs.get_mut(self.selected_tab) {
-                Some(Tab::Projects(project_tab)) => {
-                    self.page_size = chunks[1].height.saturating_sub(3) as usize;
-                    render_projects(frame, chunks[1], project_tab)
-                }
-                Some(Tab::Tooling(tooling_tab)) => {
-                    self.page_size = chunks[1].height.saturating_sub(3) as usize;
-                    render_tooling(frame, chunks[1], tooling_tab)
-                }
-                None => panic!("Tried to select non-existent tab. This shouldn't happen."),
-            },
+        self.header.render(frame, chunks[0]);
+        match (self.browser.is_clear(), self.tab) {
+            (true, Tab::Projects) => self.projects_tab.render(frame, chunks[1]),
+            (true, Tab::Tooling) => self.tooling_tab.render(frame, chunks[1]),
+            (false, _) => self.browser.render(frame, chunks[1]),
         }
-        self.render_footer(frame, chunks[2]);
+        self.footer.render(frame, chunks[2]);
         self.render_modal(frame, chunks[1]);
     }
 
@@ -527,570 +238,12 @@ impl App {
             .to_vec()
     }
 
-    fn render_header(&self, frame: &mut Frame, area: Rect) {
-        fn get_tab_len(tab: &Tab) -> usize {
-            match tab {
-                Tab::Projects(projects) => projects.results.len(),
-                Tab::Tooling(tooling) => tooling.results.len(),
-            }
-        }
-
-        let block = Block::default()
-            .borders(Borders::ALL)
-            .title(" DDC Project Browser ")
-            .title_style(Style::default().fg(Color::Cyan))
-            .border_style(Style::default().fg(Color::Cyan));
-
-        match self.browser.frames.last() {
-            Some(directory_frame) => {
-                let text = format!(" Browsing: {} ", directory_frame.cwd.display());
-                let header = Paragraph::new(text).block(block);
-
-                frame.render_widget(header, area);
-            }
-            None => {
-                let titles = [
-                    Line::from(vec![
-                        Span::styled("D", Style::default().add_modifier(Modifier::UNDERLINED)),
-                        Span::raw(format!(
-                            "iscovered Projects ({})",
-                            get_tab_len(&self.tabs[PROJECTS_TAB])
-                        )),
-                    ]),
-                    Line::from(vec![
-                        Span::styled("T", Style::default().add_modifier(Modifier::UNDERLINED)),
-                        Span::raw(format!(
-                            "ooling Overview ({})",
-                            get_tab_len(&self.tabs[TOOLING_TAB])
-                        )),
-                    ]),
-                ];
-                let tabs = Tabs::new(titles)
-                    .highlight_style(
-                        Style::default()
-                            .bg(Color::Blue)
-                            .fg(Color::White)
-                            .add_modifier(Modifier::BOLD),
-                    )
-                    .select(self.selected_tab)
-                    .padding(" ", " ")
-                    .divider("|")
-                    .block(block);
-                frame.render_widget(tabs, area);
-            }
-        }
-    }
-
-    fn render_footer(&self, frame: &mut Frame, area: Rect) {
-        let footer = if let Some(message) = &self.error_message {
-            let msg = format!(" {}", message);
-            Paragraph::new(msg).block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .title(" ERROR ")
-                    .style(
-                        Style::default()
-                            .fg(Color::LightRed)
-                            .add_modifier(Modifier::BOLD),
-                    ),
-            )
-        } else {
-            let line = vec![Line::from(vec![
-                Span::styled(
-                    "↑/↓",
-                    Style::default()
-                        .fg(Color::Yellow)
-                        .add_modifier(Modifier::BOLD),
-                ),
-                Span::raw(" Navigate  "),
-                Span::styled(
-                    "←",
-                    Style::default()
-                        .fg(Color::Yellow)
-                        .add_modifier(Modifier::BOLD),
-                ),
-                Span::raw(" Go Back  "),
-                Span::styled(
-                    "→",
-                    Style::default()
-                        .fg(Color::Yellow)
-                        .add_modifier(Modifier::BOLD),
-                ),
-                Span::raw(" Enter Item  "),
-                Span::styled(
-                    "p",
-                    Style::default()
-                        .fg(Color::Yellow)
-                        .add_modifier(Modifier::BOLD),
-                ),
-                Span::raw(" Enter Parent  "),
-                Span::styled(
-                    "i",
-                    Style::default()
-                        .fg(Color::Yellow)
-                        .add_modifier(Modifier::BOLD),
-                ),
-                Span::raw(" Info  "),
-                Span::styled(
-                    "d/t",
-                    Style::default()
-                        .fg(Color::Yellow)
-                        .add_modifier(Modifier::BOLD),
-                ),
-                Span::raw(" Select Tab  "),
-                Span::styled(
-                    "Esc",
-                    Style::default()
-                        .fg(Color::Yellow)
-                        .add_modifier(Modifier::BOLD),
-                ),
-                Span::raw(" Close  "),
-                Span::styled(
-                    "?",
-                    Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
-                ),
-                Span::raw(" Help  "),
-                Span::styled(
-                    "q",
-                    Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
-                ),
-                Span::raw(" Quit"),
-            ])];
-
-            Paragraph::new(line).block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .title(Line::from(" Controls ").alignment(Alignment::Left))
-                    .title_style(Style::default().fg(Color::Green))
-                    .title_bottom(
-                        Line::from(" More controls in the help ")
-                            .alignment(Alignment::Right)
-                            .style(
-                                Style::default()
-                                    .fg(Color::Gray)
-                                    .add_modifier(Modifier::ITALIC),
-                            ),
-                    )
-                    .border_style(Style::default().fg(Color::Green)),
-            )
-        };
-
-        frame.render_widget(footer, area);
-    }
-
     fn render_modal(&mut self, frame: &mut Frame, area: Rect) {
         if let UiMode::Modal(modal) = &mut self.mode {
             match modal {
-                Modal::Help => self.render_help_popup(frame, area),
-                Modal::Info(modal_state) => {
-                    let text = if let Some(Tab::Tooling(tab)) = self.tabs.get(self.selected_tab)
-                        && let Some(info_msg) = tab
-                            .state
-                            .selected()
-                            .and_then(|i| tab.results.get(i))
-                            .and_then(|r| r.info.as_ref())
-                    {
-                        info_msg
-                    } else {
-                        // This should be a dead branch.
-                        ""
-                    };
-                    render_info_popup(frame, area, modal_state, text)
-                }
+                Modal::Help(component) => component.render(frame, area),
+                Modal::Info(info_modal) => info_modal.render(frame, area),
             }
         }
     }
-
-    fn render_help_popup(&self, frame: &mut Frame, area: Rect) {
-        let area = helpers::popup_area_clamped(area, 70, 150, 80, 22, 40, 60);
-        let help = Paragraph::new(vec![
-            Line::from(vec![
-                Span::styled("d", Style::default().fg(Color::Yellow)),
-                Span::raw(", "),
-                Span::styled("1", Style::default().fg(Color::Yellow)),
-                Span::raw("      "),
-                Span::raw("Switch to the "),
-                Span::styled(
-                    "Detected Projects",
-                    Style::default().add_modifier(Modifier::BOLD),
-                ),
-                Span::raw(" tab"),
-            ]),
-            Line::from(vec![
-                Span::styled("t", Style::default().fg(Color::Yellow)),
-                Span::raw(", "),
-                Span::styled("2", Style::default().fg(Color::Yellow)),
-                Span::raw("      "),
-                Span::raw("Switch to the "),
-                Span::styled(
-                    "Tooling Overview",
-                    Style::default().add_modifier(Modifier::BOLD),
-                ),
-                Span::raw(" tab"),
-            ]),
-            Line::from(""),
-            Line::from(vec![
-                Span::styled("↑", Style::default().fg(Color::Yellow)),
-                Span::raw(", "),
-                Span::styled("k", Style::default().fg(Color::Yellow)),
-                Span::raw("      "),
-                Span::raw("Go up"),
-            ]),
-            Line::from(vec![
-                Span::styled("↓", Style::default().fg(Color::Yellow)),
-                Span::raw(", "),
-                Span::styled("j", Style::default().fg(Color::Yellow)),
-                Span::raw("      "),
-                Span::raw("Go Down"),
-            ]),
-            Line::from(vec![
-                Span::styled("PageUp", Style::default().fg(Color::Yellow)),
-                Span::raw("    "),
-                Span::raw("Go one page up"),
-            ]),
-            Line::from(vec![
-                Span::styled("PageDown", Style::default().fg(Color::Yellow)),
-                Span::raw("  "),
-                Span::raw("Go one page down"),
-            ]),
-            Line::from(vec![
-                Span::styled("Home", Style::default().fg(Color::Yellow)),
-                Span::raw("      "),
-                Span::raw("Go to the first item"),
-            ]),
-            Line::from(vec![
-                Span::styled("End", Style::default().fg(Color::Yellow)),
-                Span::raw("       "),
-                Span::raw("Go to the last item"),
-            ]),
-            Line::from(vec![
-                Span::styled("←", Style::default().fg(Color::Yellow)),
-                Span::raw(", "),
-                Span::styled("h", Style::default().fg(Color::Yellow)),
-                Span::raw("      "),
-                Span::raw("Go Back"),
-            ]),
-            Line::from(vec![
-                Span::styled("→", Style::default().fg(Color::Yellow)),
-                Span::raw(", "),
-                Span::styled("l", Style::default().fg(Color::Yellow)),
-                Span::raw("      "),
-                Span::raw("Enter the selected item"),
-            ]),
-            Line::from(vec![
-                Span::styled("p", Style::default().fg(Color::Yellow)),
-                Span::raw("         "),
-                Span::raw("Enter the parent of the selected project or tool"),
-            ]),
-            Line::from(vec![
-                Span::raw("          "),
-                Span::raw("This is useful if you want to inspect a footprint"),
-            ])
-            .style(Style::default().add_modifier(Modifier::DIM)),
-            Line::from(vec![
-                Span::raw("          "),
-                Span::raw("of the whole project, and not just the dev dir."),
-            ])
-            .style(Style::default().add_modifier(Modifier::DIM)),
-            Line::from(""),
-            Line::from(vec![
-                Span::styled("i", Style::default().fg(Color::Yellow)),
-                Span::raw("         "),
-                Span::raw("Show info window for the selected tool"),
-            ]),
-            Line::from(""),
-            Line::from(vec![
-                Span::styled("Esc", Style::default().fg(Color::Yellow)),
-                Span::raw("       "),
-                Span::raw("Close any pop-up window, e.g. Help"),
-            ]),
-            Line::from(vec![
-                Span::styled("?", Style::default().fg(Color::Yellow)),
-                Span::raw("         "),
-                Span::raw("Show the help pop-up window"),
-            ]),
-            Line::from(vec![
-                Span::styled("q", Style::default().fg(Color::Yellow)),
-                Span::raw("         "),
-                Span::raw("Quit the application"),
-            ]),
-        ])
-        .wrap(Wrap { trim: false })
-        .block(
-            Block::bordered()
-                .padding(Padding::symmetric(2, 1))
-                .title(Line::from(" Help ").alignment(Alignment::Left))
-                .title_style(Style::default().fg(Color::Green))
-                .title(
-                    Line::from(" Esc ").alignment(Alignment::Right).style(
-                        Style::default()
-                            .fg(Color::Red)
-                            .add_modifier(Modifier::ITALIC),
-                    ),
-                )
-                .border_style(Style::default().fg(Color::Green)),
-        );
-
-        frame.render_widget(Clear, area);
-        frame.render_widget(help, area);
-    }
-}
-
-struct TableConfig<'a, T> {
-    title: &'a str,
-    header: Vec<&'a str>,
-    column_sizes: &'static [Constraint],
-    row_fn: for<'r> fn(&'r T) -> Row<'r>,
-}
-
-fn render_projects(frame: &mut Frame, area: Rect, tab: &mut ResultsTab<ProjectResult>) {
-    let table_config = TableConfig {
-        title: " Projects ",
-        header: vec!["", "Project", "Size", "Last project update", "Parent size"],
-        column_sizes: &[
-            Constraint::Length(3),
-            Constraint::Percentage(60),
-            Constraint::Length(10),
-            Constraint::Length(20),
-            Constraint::Length(11),
-        ],
-        row_fn: create_project_row,
-    };
-    render_results(frame, area, tab, &table_config);
-}
-
-fn create_project_row<'a>(result: &'a ProjectResult) -> Row<'a> {
-    Row::new(vec![
-        Cell::from(format!("{} ", result.lang)),
-        Cell::from(Line::from(result.path.display().to_string())),
-        size_cell(result.size),
-        last_update_cell(now(), result.last_update),
-        parent_size_cell(result.parent.as_ref().map(|p| p.size)),
-    ])
-}
-
-fn render_tooling(frame: &mut Frame, area: Rect, tab: &mut ResultsTab<ToolingResult>) {
-    let table_config = TableConfig {
-        title: " Tools ",
-        header: vec!["", "Tool", "Size", "Last project update", "Info"],
-        column_sizes: &[
-            Constraint::Length(3),
-            Constraint::Percentage(60),
-            Constraint::Length(10),
-            Constraint::Length(20),
-            Constraint::Length(4),
-        ],
-        row_fn: create_tooling_row,
-    };
-    render_results(frame, area, tab, &table_config);
-}
-
-fn create_tooling_row<'a>(result: &'a ToolingResult) -> Row<'a> {
-    Row::new(vec![
-        Cell::from(format!("{} ", result.lang)),
-        Cell::from(Line::from(vec![
-            Span::raw(result.description),
-            Span::styled(
-                format!(" ({})", result.path.display()),
-                Style::default().add_modifier(Modifier::DIM),
-            ),
-        ])),
-        size_cell(result.size),
-        last_update_cell(now(), result.last_update),
-        Cell::from(Span::raw(result.info.map(|_| "📖 »").unwrap_or_default())),
-    ])
-}
-fn render_results<T>(
-    frame: &mut Frame,
-    area: Rect,
-    tab: &mut ResultsTab<T>,
-    config: &TableConfig<T>,
-) {
-    let rows: Vec<_> = tab.results.iter().map(config.row_fn).collect();
-
-    let table = Table::new(rows, config.column_sizes)
-        .header(
-            Row::new(config.header.clone()).style(
-                Style::default()
-                    .fg(Color::Blue)
-                    .add_modifier(Modifier::BOLD),
-            ),
-        )
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title(config.title)
-                .title_style(Style::default().fg(Color::LightYellow))
-                .border_style(Style::default().fg(Color::LightYellow)),
-        )
-        .row_highlight_style(
-            Style::default()
-                .bg(Color::Blue)
-                .fg(Color::White)
-                .add_modifier(Modifier::BOLD),
-        )
-        .highlight_symbol("► ");
-
-    frame.render_stateful_widget(table, area, &mut tab.state);
-
-    let needs_scroll = tab.results.len() > area.height.saturating_sub(3) as usize;
-    if needs_scroll {
-        let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
-            .begin_symbol(Some("↑"))
-            .end_symbol(Some("↓"))
-            .track_symbol(Some("│"));
-
-        frame.render_stateful_widget(scrollbar, area, &mut tab.scroll_state);
-    }
-}
-
-fn render_directory(frame: &mut Frame, area: Rect, directory_frame: &mut DirectoryBrowserFrame) {
-    let directory_size: u64 = directory_frame
-        .directory_list
-        .iter()
-        .filter_map(|di| di.size)
-        .sum();
-    let rows: Vec<_> = directory_frame
-        .directory_list
-        .iter()
-        .map(|di| create_directory_list_item(di, directory_size))
-        .collect();
-
-    let table = Table::new(
-        rows,
-        &[
-            Constraint::Length(3),
-            Constraint::Percentage(60),
-            Constraint::Length(6),
-            Constraint::Length(20),
-            Constraint::Length(10),
-            Constraint::Length(20),
-        ],
-    )
-    .header(
-        Row::new(vec!["", "Item", "", "", "Size", "Last modified"]).style(
-            Style::default()
-                .fg(Color::Blue)
-                .add_modifier(Modifier::BOLD),
-        ),
-    )
-    .block(
-        Block::default()
-            .borders(Borders::ALL)
-            .title(" Directory List ")
-            .title_style(Style::default().fg(Color::LightYellow))
-            .border_style(Style::default().fg(Color::LightYellow)),
-    )
-    .row_highlight_style(
-        Style::default()
-            .bg(Color::Blue)
-            .fg(Color::White)
-            .add_modifier(Modifier::BOLD),
-    )
-    .highlight_symbol("► ");
-
-    frame.render_stateful_widget(table, area, &mut directory_frame.state);
-
-    let needs_scroll =
-        directory_frame.directory_list.len() > area.height.saturating_sub(3) as usize;
-    if needs_scroll {
-        let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
-            .begin_symbol(Some("↑"))
-            .end_symbol(Some("↓"))
-            .track_symbol(Some("│"));
-
-        frame.render_stateful_widget(scrollbar, area, &mut directory_frame.scroll_state);
-    }
-}
-
-fn create_directory_list_item<'a>(item: &'a DirItem, dir_size: u64) -> Row<'a> {
-    let (icon, name_style) = if item.is_directory {
-        ("📁", Style::default().fg(Color::Cyan))
-    } else {
-        ("📄", Style::default())
-    };
-    let size = item.size.map(size_cell).unwrap_or_else(|| Cell::from("?"));
-    let percent = item
-        .size
-        .map(|size| {
-            if dir_size == 0 {
-                0.0
-            } else {
-                (size as f64) * 100.0 / (dir_size as f64)
-            }
-        })
-        .unwrap_or_default();
-
-    let bar = percent_bar(20, percent);
-
-    Row::new(vec![
-        Cell::from(icon.to_string()),
-        Cell::from(Span::styled(&item.name, name_style)),
-        Cell::from(Line::from(vec![
-            Span::from(format!("{:>5.1}", percent)),
-            Span::styled("%", Style::default().add_modifier(Modifier::DIM)),
-        ])),
-        Cell::from(bar),
-        size,
-        last_update_cell(now(), item.last_update),
-    ])
-}
-
-fn render_info_popup(frame: &mut Frame, area: Rect, state: &mut PopUpState, text: &'static str) {
-    let pop_up = PopUp::new(" Info ", text);
-    frame.render_stateful_widget(pop_up, area, state);
-}
-
-fn size_cell(size: u64) -> Cell<'static> {
-    let text = format_size(size, DECIMAL);
-    let color = match get_size_color_code(size) {
-        ColorCode::None => Color::Gray,
-        ColorCode::Low => Color::Green,
-        ColorCode::Medium => Color::Yellow,
-        ColorCode::High => Color::Red,
-    };
-
-    Cell::from(text).style(Style::default().fg(color))
-}
-
-fn last_update_cell(now: SystemTime, last: Option<SystemTime>) -> Cell<'static> {
-    let text = last
-        .map(|t| {
-            DateTime::<Local>::from(t)
-                .format("%Y-%m-%d %H:%M:%S")
-                .to_string()
-        })
-        .unwrap_or_default();
-
-    let color = match get_time_color_code(&now, &last) {
-        ColorCode::None => Color::Gray,
-        ColorCode::Low => Color::Green,
-        ColorCode::Medium => Color::Yellow,
-        ColorCode::High => Color::Red,
-    };
-
-    Cell::from(text).style(Style::default().fg(color))
-}
-
-fn parent_size_cell(parent_size: Option<u64>) -> Cell<'static> {
-    let text = parent_size
-        .map(|s| format_size(s, DECIMAL))
-        .unwrap_or_default();
-
-    Cell::from(text).style(Style::default().add_modifier(Modifier::DIM))
-}
-
-pub fn percent_bar(width: usize, percent: f64) -> Line<'static> {
-    let filled_len = ((width as f64) * percent / 100.0).round() as usize;
-
-    let mut spans = Vec::new();
-
-    for _ in 0..filled_len {
-        spans.push(Span::from("█"));
-    }
-    for _ in filled_len..width {
-        spans.push(Span::from("░"));
-    }
-
-    Line::from(spans)
 }
