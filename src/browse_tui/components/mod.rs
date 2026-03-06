@@ -4,6 +4,7 @@ mod header;
 mod help_modal;
 mod info_modal;
 mod projects_tab;
+pub mod sort_modal;
 mod tooling_tab;
 
 pub use browser::DirectoryBrowser;

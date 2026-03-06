@@ -11,10 +11,11 @@ use ratatui::{
 };
 
 use crate::browse_tui::component::Component;
+use crate::browse_tui::components::sort_modal::SortModal;
 use crate::browse_tui::components::{
     DirectoryBrowser, Footer, Header, HelpModal, InfoModal, ProjectsTab, ToolingTab,
 };
-use crate::browse_tui::message::{AppMessage, Tab};
+use crate::browse_tui::message::{AppMessage, SortBy, Tab};
 use crate::discovery::{ProjectResult, ToolingResult};
 use crate::files_db::FilesDB;
 
@@ -29,6 +30,7 @@ enum RunningState {
 enum Modal {
     Help(HelpModal),
     Info(InfoModal),
+    Sort(SortModal),
 }
 
 #[derive(Debug, Default)]
@@ -45,6 +47,7 @@ enum Message {
     ToolingTab(<ToolingTab as Component>::Message),
     DirectoryBrowser(<DirectoryBrowser as Component>::Message),
     InfoModal(<InfoModal as Component>::Message),
+    SortModal(<SortModal as Component>::Message),
 }
 
 #[derive(Debug)]
@@ -140,6 +143,9 @@ impl App {
                 UiMode::Modal(Modal::Info(info_modal)) => {
                     info_modal.handle_key(key).map(Message::InfoModal)
                 }
+                UiMode::Modal(Modal::Sort(sort_modal)) => {
+                    sort_modal.handle_key(key).map(Message::SortModal)
+                }
             }
         }
         message
@@ -161,6 +167,13 @@ impl App {
                     None
                 }
             }
+            Message::SortModal(msg) => {
+                if let UiMode::Modal(Modal::Sort(sort_modal)) = &mut self.mode {
+                    sort_modal.update(msg).map(Message::AppMessage)
+                } else {
+                    None
+                }
+            }
         }
     }
 
@@ -174,6 +187,10 @@ impl App {
             AppMessage::EnterBrowser(path) => self.enter_browser(path),
             AppMessage::SelectTab(i) => self.select_tab(i),
             AppMessage::OpenInfo(text) => self.open_info(text),
+            AppMessage::OpenSort(options) => self.open_sort(options),
+            AppMessage::RequestSort(sort_by) => {
+                return self.request_sort(sort_by);
+            }
         }
         None
     }
@@ -204,6 +221,23 @@ impl App {
 
     fn open_info(&mut self, text: &'static str) {
         self.mode = UiMode::Modal(Modal::Info(InfoModal::new(text)))
+    }
+
+    fn open_sort(&mut self, options: &'static [SortBy]) {
+        self.mode = UiMode::Modal(Modal::Sort(SortModal::new(options)))
+    }
+
+    fn request_sort(&mut self, sort_by: SortBy) -> Option<Message> {
+        self.mode = UiMode::Normal;
+        match (self.browser.is_clear(), self.tab) {
+            (true, Tab::Projects) => Some(Message::ProjectsTab(
+                <ProjectsTab as Component>::Message::ApplySort(sort_by),
+            )),
+            (true, Tab::Tooling) => Some(Message::ToolingTab(
+                <ToolingTab as Component>::Message::ApplySort(sort_by),
+            )),
+            (false, _) => None,
+        }
     }
 
     fn draw(&mut self, frame: &mut Frame) {
@@ -243,6 +277,7 @@ impl App {
             match modal {
                 Modal::Help(component) => component.render(frame, area),
                 Modal::Info(info_modal) => info_modal.render(frame, area),
+                Modal::Sort(sort_modal) => sort_modal.render(frame, area),
             }
         }
     }

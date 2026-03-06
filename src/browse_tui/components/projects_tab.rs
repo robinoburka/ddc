@@ -9,7 +9,7 @@ use ratatui::{Frame, crossterm::event::KeyCode};
 
 use crate::browse_tui::component::{Component, Navigable};
 use crate::browse_tui::helpers::{last_update_cell, now, parent_size_cell, size_cell};
-use crate::browse_tui::message::AppMessage;
+use crate::browse_tui::message::{AppMessage, SortBy, SortDirection};
 use crate::discovery::ProjectResult;
 
 #[derive(Debug)]
@@ -19,9 +19,13 @@ pub struct ProjectsTab {
     state: TableState,
     scroll_state: ScrollbarState,
     page_size: u16,
+    sort_by: Option<SortBy>,
+    sort_direction: SortDirection,
 }
 
 impl ProjectsTab {
+    const SORT_OPTIONS: [SortBy; 3] = [SortBy::Project, SortBy::Size, SortBy::LastUpdate];
+
     pub fn new(results: Vec<ProjectResult>) -> Self {
         Self {
             state: {
@@ -33,6 +37,8 @@ impl ProjectsTab {
             sum: results.iter().map(|r| r.size).sum(),
             results,
             page_size: 0,
+            sort_by: None,
+            sort_direction: SortDirection::default(),
         }
     }
 
@@ -52,6 +58,36 @@ impl ProjectsTab {
             .map(|parent| parent.path.clone())
             .map(AppMessage::EnterBrowser)
     }
+
+    fn request_sort(&mut self) -> Option<AppMessage> {
+        Some(AppMessage::OpenSort(&Self::SORT_OPTIONS))
+    }
+
+    fn apply_sort(&mut self, sort_by: SortBy) -> Option<AppMessage> {
+        if self.sort_by == Some(sort_by) {
+            self.sort_direction = match self.sort_direction {
+                SortDirection::Ascending => SortDirection::Descending,
+                SortDirection::Descending => SortDirection::Ascending,
+            };
+        } else {
+            self.sort_by = Some(sort_by);
+            self.sort_direction = sort_by.default_direction();
+        }
+
+        if let Some(sort_by) = self.sort_by.as_ref() {
+            match sort_by {
+                SortBy::Project => self.results.sort_by(|a, b| a.path.cmp(&b.path)),
+                SortBy::Size => self.results.sort_by_key(|r| r.size),
+                SortBy::LastUpdate => self.results.sort_by_key(|r| r.last_update),
+            }
+
+            if self.sort_direction == SortDirection::Descending {
+                self.results.reverse();
+            }
+        }
+
+        None
+    }
 }
 
 #[derive(Debug)]
@@ -64,6 +100,8 @@ pub enum ProjectsTabMessage {
     End,
     Enter,
     EnterParent,
+    RequestSort,
+    ApplySort(SortBy),
 }
 
 impl Component for ProjectsTab {
@@ -83,6 +121,12 @@ impl Component for ProjectsTab {
             ProjectsTabMessage::EnterParent => {
                 return self.enter_parent();
             }
+            ProjectsTabMessage::RequestSort => {
+                return self.request_sort();
+            }
+            ProjectsTabMessage::ApplySort(sort_by) => {
+                return self.apply_sort(sort_by);
+            }
         }
         None
     }
@@ -97,6 +141,7 @@ impl Component for ProjectsTab {
             KeyCode::PageUp => Some(ProjectsTabMessage::PageUp),
             KeyCode::Home => Some(ProjectsTabMessage::Home),
             KeyCode::End => Some(ProjectsTabMessage::End),
+            KeyCode::Char('s') => Some(ProjectsTabMessage::RequestSort),
             _ => None,
         }
     }

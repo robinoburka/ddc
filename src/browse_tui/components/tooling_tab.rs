@@ -11,7 +11,7 @@ use ratatui::{Frame, crossterm::event::KeyCode};
 
 use crate::browse_tui::component::{Component, Navigable};
 use crate::browse_tui::helpers::{last_update_cell, now, size_cell};
-use crate::browse_tui::message::AppMessage;
+use crate::browse_tui::message::{AppMessage, SortBy, SortDirection};
 use crate::discovery::ToolingResult;
 
 #[derive(Debug)]
@@ -21,9 +21,13 @@ pub struct ToolingTab {
     state: TableState,
     scroll_state: ScrollbarState,
     page_size: u16,
+    sort_by: Option<SortBy>,
+    sort_direction: SortDirection,
 }
 
 impl ToolingTab {
+    const SORT_OPTIONS: [SortBy; 2] = [SortBy::Size, SortBy::LastUpdate];
+
     pub fn new(results: Vec<ToolingResult>) -> Self {
         Self {
             state: {
@@ -35,6 +39,8 @@ impl ToolingTab {
             sum: results.iter().map(|r| r.size).sum(),
             results,
             page_size: 0,
+            sort_by: None,
+            sort_direction: SortDirection::default(),
         }
     }
 
@@ -69,6 +75,36 @@ impl ToolingTab {
             )))
         }
     }
+
+    fn request_sort(&mut self) -> Option<AppMessage> {
+        Some(AppMessage::OpenSort(&Self::SORT_OPTIONS))
+    }
+
+    fn apply_sort(&mut self, sort_by: SortBy) -> Option<AppMessage> {
+        if self.sort_by == Some(sort_by) {
+            self.sort_direction = match self.sort_direction {
+                SortDirection::Ascending => SortDirection::Descending,
+                SortDirection::Descending => SortDirection::Ascending,
+            };
+        } else {
+            self.sort_by = Some(sort_by);
+            self.sort_direction = sort_by.default_direction();
+        }
+
+        if let Some(sort_by) = self.sort_by.as_ref() {
+            match sort_by {
+                SortBy::Size => self.results.sort_by_key(|r| r.size),
+                SortBy::LastUpdate => self.results.sort_by_key(|r| r.last_update),
+                _ => {}
+            }
+
+            if self.sort_direction == SortDirection::Descending {
+                self.results.reverse();
+            }
+        }
+
+        None
+    }
 }
 
 #[derive(Debug)]
@@ -82,6 +118,8 @@ pub enum ToolingTabMessage {
     End,
     Enter,
     EnterParent,
+    RequestSort,
+    ApplySort(SortBy),
 }
 
 impl Component for ToolingTab {
@@ -104,6 +142,12 @@ impl Component for ToolingTab {
             ToolingTabMessage::Info => {
                 return self.info();
             }
+            ToolingTabMessage::RequestSort => {
+                return self.request_sort();
+            }
+            ToolingTabMessage::ApplySort(sort_by) => {
+                return self.apply_sort(sort_by);
+            }
         }
         None
     }
@@ -119,6 +163,7 @@ impl Component for ToolingTab {
             KeyCode::PageUp => Some(ToolingTabMessage::PageUp),
             KeyCode::Home => Some(ToolingTabMessage::Home),
             KeyCode::End => Some(ToolingTabMessage::End),
+            KeyCode::Char('s') => Some(ToolingTabMessage::RequestSort),
             _ => None,
         }
     }

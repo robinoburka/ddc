@@ -126,6 +126,26 @@ impl Component for HelpModal {
                 Span::raw("         "),
                 Span::raw("Show info window for the selected tool"),
             ]),
+            Line::from(vec![
+                Span::styled("s", Style::default().fg(Color::Yellow)),
+                Span::raw("         "),
+                Span::raw("Show dialog with sorting options"),
+            ]),
+            Line::from(vec![
+                Span::raw("          "),
+                Span::raw("Once the dialogue is opened, navigate to"),
+            ])
+            .style(Style::default().add_modifier(Modifier::DIM)),
+            Line::from(vec![
+                Span::raw("          "),
+                Span::raw("the requested item and select with enter."),
+            ])
+            .style(Style::default().add_modifier(Modifier::DIM)),
+            Line::from(vec![
+                Span::raw("          "),
+                Span::raw("Alternatively, use a letter next to the option."),
+            ])
+            .style(Style::default().add_modifier(Modifier::DIM)),
             Line::from(""),
             Line::from(vec![
                 Span::styled("Esc", Style::default().fg(Color::Yellow)),
