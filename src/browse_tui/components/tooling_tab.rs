@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+use humansize::{DECIMAL, format_size};
 use ratatui::layout::{Constraint, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
@@ -16,6 +17,7 @@ use crate::discovery::ToolingResult;
 #[derive(Debug)]
 pub struct ToolingTab {
     results: Vec<ToolingResult>,
+    sum: u64,
     state: TableState,
     scroll_state: ScrollbarState,
     page_size: u16,
@@ -30,6 +32,7 @@ impl ToolingTab {
                 projects_state
             },
             scroll_state: ScrollbarState::new(results.len()),
+            sum: results.iter().map(|r| r.size).sum(),
             results,
             page_size: 0,
         }
@@ -124,6 +127,7 @@ impl Component for ToolingTab {
         self.page_size = area.height.saturating_sub(3);
 
         let rows: Vec<_> = self.results.iter().map(create_row).collect();
+        let human_size = format_size(self.sum, DECIMAL);
 
         let table = Table::new(
             rows,
@@ -142,6 +146,13 @@ impl Component for ToolingTab {
                     .add_modifier(Modifier::BOLD),
             ),
         )
+        .footer(Row::new(vec![
+            Cell::from(""),
+            Cell::from(""),
+            Cell::from(human_size.as_str()).style(Style::default().add_modifier(Modifier::BOLD)),
+            Cell::from(""),
+            Cell::from(""),
+        ]))
         .block(
             Block::default()
                 .borders(Borders::ALL)

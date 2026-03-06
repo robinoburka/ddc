@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 use std::time::SystemTime;
 
+use humansize::{DECIMAL, format_size};
 use ratatui::layout::{Constraint, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
@@ -63,6 +64,7 @@ impl DirectoryBrowser {
             },
             scroll_state: ScrollbarState::new(directory_list.len()),
             cwd: path.clone(),
+            sum: directory_list.iter().filter_map(|i| i.size).sum(),
             directory_list,
         });
 
@@ -168,6 +170,7 @@ impl Component for DirectoryBrowser {
             .iter()
             .map(|di| create_row(di, directory_size))
             .collect();
+        let human_size = format_size(directory_frame.sum, DECIMAL);
 
         let table = Table::new(
             rows,
@@ -187,6 +190,14 @@ impl Component for DirectoryBrowser {
                     .add_modifier(Modifier::BOLD),
             ),
         )
+        .footer(Row::new(vec![
+            Cell::from(""),
+            Cell::from(""),
+            Cell::from(""),
+            Cell::from(""),
+            Cell::from(human_size.as_str()).style(Style::default().add_modifier(Modifier::BOLD)),
+            Cell::from(""),
+        ]))
         .block(
             Block::default()
                 .borders(Borders::ALL)
@@ -310,6 +321,7 @@ struct DirectoryBrowserFrame {
     scroll_state: ScrollbarState,
     cwd: PathBuf,
     directory_list: Vec<DirItem>,
+    sum: u64,
 }
 
 #[derive(Debug, Clone)]

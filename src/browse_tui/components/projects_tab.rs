@@ -1,3 +1,4 @@
+use humansize::{DECIMAL, format_size};
 use ratatui::layout::{Constraint, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::Line;
@@ -14,6 +15,7 @@ use crate::discovery::ProjectResult;
 #[derive(Debug)]
 pub struct ProjectsTab {
     results: Vec<ProjectResult>,
+    sum: u64,
     state: TableState,
     scroll_state: ScrollbarState,
     page_size: u16,
@@ -28,6 +30,7 @@ impl ProjectsTab {
                 projects_state
             },
             scroll_state: ScrollbarState::new(results.len()),
+            sum: results.iter().map(|r| r.size).sum(),
             results,
             page_size: 0,
         }
@@ -102,6 +105,7 @@ impl Component for ProjectsTab {
         self.page_size = area.height.saturating_sub(3);
 
         let rows: Vec<_> = self.results.iter().map(create_row).collect();
+        let human_size = format_size(self.sum, DECIMAL);
 
         let table = Table::new(
             rows,
@@ -127,6 +131,13 @@ impl Component for ProjectsTab {
                     .add_modifier(Modifier::BOLD),
             ),
         )
+        .footer(Row::new(vec![
+            Cell::from(""),
+            Cell::from(""),
+            Cell::from(human_size.as_str()).style(Style::default().add_modifier(Modifier::BOLD)),
+            Cell::from(""),
+            Cell::from(""),
+        ]))
         .block(
             Block::default()
                 .borders(Borders::ALL)
