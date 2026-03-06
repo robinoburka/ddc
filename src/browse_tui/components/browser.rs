@@ -265,54 +265,50 @@ impl Navigable for DirectoryBrowser {
     fn move_up(&mut self) {
         if let Some(frame) = self.frames.last_mut() {
             frame.state.select_previous();
-            frame.scroll_state.prev();
+            sync_scroll(frame);
         }
     }
 
     fn move_down(&mut self) {
         if let Some(frame) = self.frames.last_mut() {
             frame.state.select_next();
-            frame.scroll_state.next();
+            sync_scroll(frame);
         }
     }
 
     fn page_up(&mut self) {
         if let Some(frame) = self.frames.last_mut() {
             frame.state.scroll_up_by(self.page_size);
-            frame.scroll_state = frame.scroll_state.position(
-                frame
-                    .scroll_state
-                    .get_position()
-                    .saturating_sub(self.page_size as usize),
-            );
+            sync_scroll(frame);
         }
     }
 
     fn page_down(&mut self) {
         if let Some(frame) = self.frames.last_mut() {
             frame.state.scroll_down_by(self.page_size);
-            frame.scroll_state = frame.scroll_state.position(
-                frame
-                    .scroll_state
-                    .get_position()
-                    .saturating_add(self.page_size as usize),
-            );
+            sync_scroll(frame);
         }
     }
 
     fn home(&mut self) {
         if let Some(frame) = self.frames.last_mut() {
             frame.state.select_first();
-            frame.scroll_state.first();
+            sync_scroll(frame);
         }
     }
 
     fn end(&mut self) {
         if let Some(frame) = self.frames.last_mut() {
             frame.state.select_last();
-            frame.scroll_state.last();
+            sync_scroll(frame);
         }
     }
+}
+
+fn sync_scroll(frame: &mut DirectoryBrowserFrame) {
+    frame.scroll_state = frame
+        .scroll_state
+        .position(frame.state.selected().unwrap_or(0));
 }
 
 #[derive(Debug)]

@@ -180,39 +180,39 @@ fn create_row<'a>(result: &'a ProjectResult) -> Row<'a> {
 impl Navigable for ProjectsTab {
     fn move_up(&mut self) {
         self.state.select_previous();
-        self.scroll_state.prev();
+        self.sync_scroll();
     }
 
     fn move_down(&mut self) {
         self.state.select_next();
-        self.scroll_state.next();
+        self.sync_scroll();
     }
 
     fn page_up(&mut self) {
         self.state.scroll_up_by(self.page_size);
-        self.scroll_state = self.scroll_state.position(
-            self.scroll_state
-                .get_position()
-                .saturating_sub(self.page_size as usize),
-        );
+        self.sync_scroll();
     }
 
     fn page_down(&mut self) {
         self.state.scroll_down_by(self.page_size);
-        self.scroll_state = self.scroll_state.position(
-            self.scroll_state
-                .get_position()
-                .saturating_add(self.page_size as usize),
-        );
+        self.sync_scroll();
     }
 
     fn home(&mut self) {
         self.state.select_first();
-        self.scroll_state.first();
+        self.sync_scroll();
     }
 
     fn end(&mut self) {
         self.state.select_last();
-        self.scroll_state.last();
+        self.sync_scroll();
+    }
+}
+
+impl ProjectsTab {
+    fn sync_scroll(&mut self) {
+        self.scroll_state = self
+            .scroll_state
+            .position(self.state.selected().unwrap_or(0));
     }
 }

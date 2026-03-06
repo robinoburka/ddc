@@ -144,24 +144,18 @@ impl Component for InfoModal {
 impl Navigable for InfoModal {
     fn move_up(&mut self) {
         self.scroll = self.scroll.saturating_sub(1);
-        if let Some(ref mut s) = self.scroll_state {
-            s.prev();
-        }
+        self.sync_scroll();
     }
 
     fn move_down(&mut self) {
         let max_scroll = self.content_height.saturating_sub(self.window_height);
         self.scroll = self.scroll.saturating_add(1).min(max_scroll);
-        if let Some(ref mut s) = self.scroll_state {
-            s.next();
-        }
+        self.sync_scroll();
     }
 
     fn page_up(&mut self) {
         self.scroll = self.scroll.saturating_sub(self.window_height);
-        self.scroll_state = self
-            .scroll_state
-            .map(|s| s.position(s.get_position().saturating_sub(self.window_height as usize)));
+        self.sync_scroll();
     }
 
     fn page_down(&mut self) {
@@ -170,22 +164,24 @@ impl Navigable for InfoModal {
             .scroll
             .saturating_add(self.window_height)
             .min(max_scroll);
-        self.scroll_state = self
-            .scroll_state
-            .map(|s| s.position(s.get_position().saturating_add(self.window_height as usize)));
+        self.sync_scroll();
     }
 
     fn home(&mut self) {
         self.scroll = 0;
-        if let Some(ref mut s) = self.scroll_state {
-            s.first();
-        }
+        self.sync_scroll();
     }
 
     fn end(&mut self) {
         self.scroll = self.content_height.saturating_sub(self.window_height);
+        self.sync_scroll();
+    }
+}
+
+impl InfoModal {
+    fn sync_scroll(&mut self) {
         if let Some(ref mut s) = self.scroll_state {
-            s.last();
+            *s = s.position(self.scroll as usize);
         }
     }
 }
