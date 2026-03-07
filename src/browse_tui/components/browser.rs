@@ -1,4 +1,5 @@
 use std::path::PathBuf;
+use std::rc::Rc;
 use std::time::SystemTime;
 
 use humansize::{DECIMAL, format_size};
@@ -19,56 +20,23 @@ use crate::files_db::FilesDB;
 
 #[derive(Debug)]
 pub struct DirectoryBrowser {
-    db: FilesDB,
+    db: Rc<FilesDB>,
     frames: Vec<DirectoryBrowserFrame>,
     page_size: u16,
 }
 
 impl DirectoryBrowser {
-    pub fn new(db: FilesDB) -> Self {
-        Self {
+    pub fn new(db: Rc<FilesDB>, path: PathBuf) -> Result<Self, String> {
+        let frame = open_path(db.clone(), path)?;
+        Ok(Self {
             db,
-            frames: vec![],
+            frames: vec![frame],
             page_size: 0,
-        }
-    }
-
-    pub fn is_clear(&mut self) -> bool {
-        self.frames.is_empty()
-    }
-
-    pub fn clear(&mut self) {
-        self.frames.clear();
+        })
     }
 
     pub fn get_current_path(&mut self) -> Option<PathBuf> {
         self.frames.last().map(|frame| frame.cwd.clone())
-    }
-
-    pub fn open_path(&mut self, path: PathBuf) -> Result<(), String> {
-        let directory_list: Vec<_> = self
-            .db
-            .iter_level(&path)
-            .map(|fi| DirItem::from_file_info(&fi, &self.db))
-            .collect();
-
-        if directory_list.is_empty() {
-            return Err(String::from("Directory is empty."));
-        }
-
-        self.frames.push(DirectoryBrowserFrame {
-            state: {
-                let mut browser_sate = TableState::default();
-                browser_sate.select(Some(0));
-                browser_sate
-            },
-            scroll_state: ScrollbarState::new(directory_list.len()),
-            cwd: path.clone(),
-            sum: directory_list.iter().filter_map(|i| i.size).sum(),
-            directory_list,
-        });
-
-        Ok(())
     }
 
     pub fn enter(&mut self) -> Option<AppMessage> {
@@ -96,16 +64,45 @@ impl DirectoryBrowser {
             return Some(AppMessage::SetError(String::from("No item selected.")));
         };
 
-        if let Err(msg) = self.open_path(path) {
-            return Some(AppMessage::SetError(msg));
+        match open_path(self.db.clone(), path) {
+            Ok(frame) => {
+                self.frames.push(frame);
+                None
+            }
+            Err(msg) => Some(AppMessage::SetError(msg)),
         }
+    }
 
+    pub fn back(&mut self) -> Option<AppMessage> {
+        self.frames.pop();
+        if self.frames.is_empty() {
+            return Some(AppMessage::CloseBrowser);
+        }
         None
     }
+}
 
-    pub fn back(&mut self) {
-        self.frames.pop();
+fn open_path(db: Rc<FilesDB>, path: PathBuf) -> Result<DirectoryBrowserFrame, String> {
+    let directory_list: Vec<_> = db
+        .iter_level(&path)
+        .map(|fi| DirItem::from_file_info(&fi, &db))
+        .collect();
+
+    if directory_list.is_empty() {
+        return Err(String::from("Directory is empty."));
     }
+
+    Ok(DirectoryBrowserFrame {
+        state: {
+            let mut browser_sate = TableState::default();
+            browser_sate.select(Some(0));
+            browser_sate
+        },
+        scroll_state: ScrollbarState::new(directory_list.len()),
+        cwd: path.clone(),
+        sum: directory_list.iter().filter_map(|i| i.size).sum(),
+        directory_list,
+    })
 }
 
 #[derive(Debug)]
@@ -134,7 +131,9 @@ impl Component for DirectoryBrowser {
             DirectoryBrowserMessage::Enter => {
                 return self.enter();
             }
-            DirectoryBrowserMessage::Back => self.back(),
+            DirectoryBrowserMessage::Back => {
+                return self.back();
+            }
         }
         None
     }

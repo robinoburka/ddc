@@ -24,6 +24,7 @@ pub enum AppMessage {
     // Main views controls
     SelectTab(Tab),
     EnterBrowser(PathBuf),
+    CloseBrowser,
     // Modals controls
     OpenHelp,
     OpenInfo(&'static str),
