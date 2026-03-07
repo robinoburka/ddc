@@ -1,4 +1,5 @@
 mod browser;
+pub mod filter_bar;
 mod footer;
 mod header;
 mod help_modal;

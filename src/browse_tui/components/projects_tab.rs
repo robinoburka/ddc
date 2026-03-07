@@ -15,18 +15,26 @@ use crate::discovery::ProjectResult;
 #[derive(Debug)]
 pub struct ProjectsTab {
     results: Vec<ProjectResult>,
+    preprocessed_filter_paths: Vec<String>,
+    view: Vec<usize>,
     sum: u64,
     state: TableState,
     scroll_state: ScrollbarState,
     page_size: u16,
     sort_by: Option<SortBy>,
     sort_direction: SortDirection,
+    active_filter: Option<String>,
 }
 
 impl ProjectsTab {
     const SORT_OPTIONS: [SortBy; 3] = [SortBy::Project, SortBy::Size, SortBy::LastUpdate];
 
     pub fn new(results: Vec<ProjectResult>) -> Self {
+        let filter_paths = results
+            .iter()
+            .map(|r| r.path.to_string_lossy().to_ascii_lowercase())
+            .collect();
+
         Self {
             state: {
                 let mut projects_state = TableState::default();
@@ -35,25 +43,44 @@ impl ProjectsTab {
             },
             scroll_state: ScrollbarState::new(results.len()),
             sum: results.iter().map(|r| r.size).sum(),
+            view: (0..results.len()).collect(),
+            preprocessed_filter_paths: filter_paths,
             results,
             page_size: 0,
             sort_by: None,
             sort_direction: SortDirection::default(),
+            active_filter: None,
         }
     }
 
-    fn enter(&mut self) -> Option<AppMessage> {
+    pub fn apply_filter(&mut self, filter: Option<String>) {
+        let normalized = filter
+            .map(|raw| raw.trim().to_ascii_lowercase())
+            .filter(|value| !value.is_empty());
+
+        if self.active_filter == normalized {
+            return;
+        }
+
+        self.active_filter = normalized;
+        self.refresh_view();
+    }
+
+    fn selected_result(&self) -> Option<&ProjectResult> {
         self.state
             .selected()
-            .and_then(|idx| self.results.get(idx))
+            .and_then(|visible_idx| self.view.get(visible_idx))
+            .and_then(|idx| self.results.get(*idx))
+    }
+
+    fn enter(&mut self) -> Option<AppMessage> {
+        self.selected_result()
             .map(|res| res.path.clone())
             .map(AppMessage::EnterBrowser)
     }
 
     fn enter_parent(&mut self) -> Option<AppMessage> {
-        self.state
-            .selected()
-            .and_then(|idx| self.results.get(idx))
+        self.selected_result()
             .and_then(|res| res.parent.as_ref())
             .map(|parent| parent.path.clone())
             .map(AppMessage::EnterBrowser)
@@ -74,19 +101,65 @@ impl ProjectsTab {
             self.sort_direction = sort_by.default_direction();
         }
 
-        if let Some(sort_by) = self.sort_by.as_ref() {
+        self.refresh_view();
+
+        None
+    }
+
+    fn start_filter(&mut self) -> Option<AppMessage> {
+        Some(AppMessage::StartFilter)
+    }
+
+    fn sync_scroll(&mut self) {
+        let selected = self.state.selected().unwrap_or(0);
+        self.scroll_state = ScrollbarState::new(self.view.len()).position(selected);
+    }
+
+    fn refresh_view(&mut self) {
+        self.view = match self.active_filter.as_ref() {
+            Some(filter) => self
+                .preprocessed_filter_paths
+                .iter()
+                .enumerate()
+                .filter_map(|(idx, path)| path.contains(filter).then_some(idx))
+                .collect(),
+            None => (0..self.results.len()).collect(),
+        };
+
+        if let Some(sort_by) = self.sort_by {
             match sort_by {
-                SortBy::Project => self.results.sort_by(|a, b| a.path.cmp(&b.path)),
-                SortBy::Size => self.results.sort_by_key(|r| r.size),
-                SortBy::LastUpdate => self.results.sort_by_key(|r| r.last_update),
+                SortBy::Project => self.view.sort_by(|a_idx, b_idx| {
+                    self.results[*a_idx].path.cmp(&self.results[*b_idx].path)
+                }),
+                SortBy::Size => self.view.sort_by_key(|idx| self.results[*idx].size),
+                SortBy::LastUpdate => self
+                    .view
+                    .sort_by_key(|idx| self.results[*idx].last_update),
             }
 
             if self.sort_direction == SortDirection::Descending {
-                self.results.reverse();
+                self.view.reverse();
             }
         }
 
-        None
+        self.sum = self
+            .view
+            .iter()
+            .map(|&idx| self.results[idx].size)
+            .sum();
+        self.adjust_selection_to_view();
+        self.sync_scroll();
+    }
+
+    fn adjust_selection_to_view(&mut self) {
+        if self.view.is_empty() {
+            self.state.select(None);
+            return;
+        }
+
+        let selected = self.state.selected().unwrap_or(0);
+        let last = self.view.len().saturating_sub(1);
+        self.state.select(Some(selected.min(last)));
     }
 }
 
@@ -102,6 +175,7 @@ pub enum ProjectsTabMessage {
     EnterParent,
     RequestSort,
     ApplySort(SortBy),
+    StartFilter,
 }
 
 impl Component for ProjectsTab {
@@ -127,6 +201,9 @@ impl Component for ProjectsTab {
             ProjectsTabMessage::ApplySort(sort_by) => {
                 return self.apply_sort(sort_by);
             }
+            ProjectsTabMessage::StartFilter => {
+                return self.start_filter();
+            }
         }
         None
     }
@@ -142,6 +219,7 @@ impl Component for ProjectsTab {
             KeyCode::Home => Some(ProjectsTabMessage::Home),
             KeyCode::End => Some(ProjectsTabMessage::End),
             KeyCode::Char('s') => Some(ProjectsTabMessage::RequestSort),
+            KeyCode::Char('/') => Some(ProjectsTabMessage::StartFilter),
             _ => None,
         }
     }
@@ -149,7 +227,12 @@ impl Component for ProjectsTab {
     fn render(&mut self, frame: &mut Frame, area: Rect) {
         self.page_size = area.height.saturating_sub(3);
 
-        let rows: Vec<_> = self.results.iter().map(create_row).collect();
+        let rows: Vec<_> = self
+            .view
+            .iter()
+            .filter_map(|idx| self.results.get(*idx))
+            .map(create_row)
+            .collect();
         let human_size = format_size(self.sum, DECIMAL);
 
         let table = Table::new(
@@ -200,7 +283,7 @@ impl Component for ProjectsTab {
 
         frame.render_stateful_widget(table, area, &mut self.state);
 
-        let needs_scroll = self.results.len() > area.height.saturating_sub(3) as usize;
+        let needs_scroll = self.view.len() > self.page_size as usize;
         if needs_scroll {
             let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
                 .begin_symbol(Some("↑"))
@@ -251,13 +334,5 @@ impl Navigable for ProjectsTab {
     fn end(&mut self) {
         self.state.select_last();
         self.sync_scroll();
-    }
-}
-
-impl ProjectsTab {
-    fn sync_scroll(&mut self) {
-        self.scroll_state = self
-            .scroll_state
-            .position(self.state.selected().unwrap_or(0));
     }
 }

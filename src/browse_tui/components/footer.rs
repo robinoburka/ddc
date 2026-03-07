@@ -94,6 +94,13 @@ impl Component for Footer {
                 ),
                 Span::raw(" Sort  "),
                 Span::styled(
+                    "/",
+                    Style::default()
+                        .fg(Color::Yellow)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::raw(" Filter  "),
+                Span::styled(
                     "d/t",
                     Style::default()
                         .fg(Color::Yellow)

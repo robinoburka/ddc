@@ -12,6 +12,7 @@ use ratatui::{
 };
 
 use crate::browse_tui::component::Component;
+use crate::browse_tui::components::filter_bar::FilterBar;
 use crate::browse_tui::components::sort_modal::SortModal;
 use crate::browse_tui::components::{
     DirectoryBrowser, Footer, Header, HelpModal, InfoModal, ProjectsTab, ToolingTab,
@@ -42,11 +43,13 @@ enum Message {
     DirectoryBrowser(<DirectoryBrowser as Component>::Message),
     InfoModal(<InfoModal as Component>::Message),
     SortModal(<SortModal as Component>::Message),
+    Filter(<FilterBar as Component>::Message),
 }
 
 #[derive(Debug)]
 enum UiLayer {
     Tab,
+    Filter,
     Browser,
     Modal(Modal),
 }
@@ -63,6 +66,7 @@ pub struct App {
     projects_tab: ProjectsTab,
     tooling_tab: ToolingTab,
     browser: Option<DirectoryBrowser>,
+    filter: FilterBar,
     // Helper data
     error_message: Option<String>,
     // Persisting inputs
@@ -84,6 +88,7 @@ impl App {
             projects_tab: ProjectsTab::new(projects_data),
             tooling_tab: ToolingTab::new(tooling_data),
             browser: None,
+            filter: FilterBar::new(),
             error_message: None,
             db: Rc::new(db),
         }
@@ -124,6 +129,7 @@ impl App {
                 Tab::Projects => self.projects_tab.handle_key(key).map(Message::ProjectsTab),
                 Tab::Tooling => self.tooling_tab.handle_key(key).map(Message::ToolingTab),
             },
+            UiLayer::Filter => self.filter.handle_key(key).map(Message::Filter),
             UiLayer::Browser => {
                 if let Some(browser) = self.browser.as_mut() {
                     browser.handle_key(key).map(Message::DirectoryBrowser)
@@ -165,6 +171,7 @@ impl App {
             Message::AppMessage(msg) => self.handle_app_message(msg),
             Message::ProjectsTab(msg) => self.projects_tab.update(msg).map(Message::AppMessage),
             Message::ToolingTab(msg) => self.tooling_tab.update(msg).map(Message::AppMessage),
+            Message::Filter(msg) => self.filter.update(msg).map(Message::AppMessage),
             Message::DirectoryBrowser(msg) => {
                 if let Some(browser) = self.browser.as_mut() {
                     browser.update(msg).map(Message::AppMessage)
@@ -194,6 +201,7 @@ impl App {
             AppMessage::Quit => self.quit(),
             AppMessage::Refresh => {}
             AppMessage::SetError(err) => self.error_message = Some(err),
+            AppMessage::CloseModal => self.close_modal(),
             AppMessage::OpenHelp => self.open_help(),
             AppMessage::CloseBrowser => self.close_browser(),
             AppMessage::EnterBrowser(path) => self.enter_browser(path),
@@ -203,7 +211,11 @@ impl App {
             AppMessage::RequestSort(sort_by) => {
                 return self.request_sort(sort_by);
             }
-            AppMessage::CloseModal => self.close_modal(),
+            AppMessage::StartFilter => {
+                return self.start_filter();
+            }
+            AppMessage::AcceptFilter => self.accept_filter(),
+            AppMessage::DismissFilter => self.dismiss_filter(),
         }
         None
     }
@@ -276,6 +288,23 @@ impl App {
         }
     }
 
+    fn start_filter(&mut self) -> Option<Message> {
+        self.layers.push(UiLayer::Filter);
+        Some(Message::Filter(<FilterBar as Component>::Message::Activate))
+    }
+
+    fn accept_filter(&mut self) {
+        if matches!(self.layers.last_mut(), Some(UiLayer::Filter)) {
+            self.layers.pop();
+        }
+    }
+
+    fn dismiss_filter(&mut self) {
+        if matches!(self.layers.last_mut(), Some(UiLayer::Filter)) {
+            self.layers.pop();
+        }
+    }
+
     fn draw(&mut self, frame: &mut Frame) {
         // Handle data exchange among components
         self.footer.set_error(self.error_message.clone());
@@ -284,14 +313,17 @@ impl App {
             .set_browser_path(self.browser.as_mut().and_then(|b| b.get_current_path()));
 
         // Render the whole app
-        let chunks = self.create_layout(frame.area());
+        let chunks = self.create_layout(frame.area(), self.filter.is_active());
 
         self.header.render(frame, chunks[0]);
         if let Some(browser) = self.browser.as_mut() {
             browser.render(frame, chunks[1]);
         } else {
             match self.selected_tab {
-                Tab::Projects => self.projects_tab.render(frame, chunks[1]),
+                Tab::Projects => {
+                    self.projects_tab.apply_filter(self.filter.get_filter());
+                    self.projects_tab.render(frame, chunks[1]);
+                }
                 Tab::Tooling => self.tooling_tab.render(frame, chunks[1]),
             }
         }
@@ -301,18 +333,36 @@ impl App {
             Some(UiLayer::Modal(Modal::Sort(sort_modal))) => sort_modal.render(frame, chunks[1]),
             _ => {}
         }
-        self.footer.render(frame, chunks[2]);
+        if self.filter.is_active() {
+            self.filter.render(frame, chunks[2]);
+            self.footer.render(frame, chunks[3]);
+        } else {
+            self.footer.render(frame, chunks[2]);
+        }
     }
 
-    fn create_layout(&self, area: Rect) -> Vec<Rect> {
-        Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([
-                Constraint::Length(3),
-                Constraint::Min(0),
-                Constraint::Length(3),
-            ])
-            .split(area)
-            .to_vec()
+    fn create_layout(&self, area: Rect, with_filter: bool) -> Vec<Rect> {
+        if with_filter {
+            Layout::default()
+                .direction(Direction::Vertical)
+                .constraints([
+                    Constraint::Length(3),
+                    Constraint::Min(0),
+                    Constraint::Length(3),
+                    Constraint::Length(3),
+                ])
+                .split(area)
+                .to_vec()
+        } else {
+            Layout::default()
+                .direction(Direction::Vertical)
+                .constraints([
+                    Constraint::Length(3),
+                    Constraint::Min(0),
+                    Constraint::Length(3),
+                ])
+                .split(area)
+                .to_vec()
+        }
     }
 }
