@@ -146,6 +146,21 @@ impl Component for HelpModal {
                 Span::raw("Alternatively, use a letter next to the option."),
             ])
             .style(Style::default().add_modifier(Modifier::DIM)),
+            Line::from(vec![
+                Span::styled("/", Style::default().fg(Color::Yellow)),
+                Span::raw("         "),
+                Span::raw("Start filtering projects by path"),
+            ]),
+            Line::from(vec![
+                Span::raw("          "),
+                Span::raw("Filter is accepted with Enter, cleared with Esc,"),
+            ])
+            .style(Style::default().add_modifier(Modifier::DIM)),
+            Line::from(vec![
+                Span::raw("          "),
+                Span::raw("and you can use / to gain focus to the filter again."),
+            ])
+            .style(Style::default().add_modifier(Modifier::DIM)),
             Line::from(""),
             Line::from(vec![
                 Span::styled("Esc", Style::default().fg(Color::Yellow)),

@@ -31,6 +31,10 @@ pub enum AppMessage {
     OpenSort(&'static [SortBy]),
     RequestSort(SortBy),
     CloseModal,
+    // Filtering,
+    StartFilter,
+    AcceptFilter,
+    DismissFilter,
     // Error reporting
     SetError(String),
 }
