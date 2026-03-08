@@ -5,7 +5,6 @@ use tracing::debug_span;
 
 use crate::discovery::{ProjectResult, VcsResult};
 
-#[allow(dead_code)]
 #[derive(Debug)]
 pub struct EnrichedVcsResult {
     pub path: PathBuf,

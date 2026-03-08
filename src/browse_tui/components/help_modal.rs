@@ -56,6 +56,18 @@ impl Component for HelpModal {
                 ),
                 Span::raw(" tab"),
             ]),
+            Line::from(vec![
+                Span::styled("v", Style::default().fg(Color::Yellow)),
+                Span::raw(", "),
+                Span::styled("3", Style::default().fg(Color::Yellow)),
+                Span::raw("      "),
+                Span::raw("Switch to the "),
+                Span::styled(
+                    "Version controlled",
+                    Style::default().add_modifier(Modifier::BOLD),
+                ),
+                Span::raw(" tab"),
+            ]),
             Line::from(""),
             Line::from(vec![
                 Span::styled("↑", Style::default().fg(Color::Yellow)),
@@ -112,12 +124,12 @@ impl Component for HelpModal {
             ]),
             Line::from(vec![
                 Span::raw("          "),
-                Span::raw("This is useful if you want to inspect a footprint"),
+                Span::raw("Not available in Version controlled tab."),
             ])
             .style(Style::default().add_modifier(Modifier::DIM)),
             Line::from(vec![
                 Span::raw("          "),
-                Span::raw("of the whole project, and not just the dev dir."),
+                Span::raw("Use \u{2192} to open the selected VCS root directly."),
             ])
             .style(Style::default().add_modifier(Modifier::DIM)),
             Line::from(""),

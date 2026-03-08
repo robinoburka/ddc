@@ -13,15 +13,22 @@ use crate::browse_tui::message::{AppMessage, Tab};
 pub struct Header {
     projects_count: usize,
     tooling_count: usize,
+    vcs_count: usize,
     browser_path: Option<PathBuf>,
     selected_tab: Tab,
 }
 
 impl Header {
-    pub fn new(selected_tab: Tab, projects_count: usize, tooling_count: usize) -> Self {
+    pub fn new(
+        selected_tab: Tab,
+        projects_count: usize,
+        tooling_count: usize,
+        vcs_count: usize,
+    ) -> Self {
         Self {
             projects_count,
             tooling_count,
+            vcs_count,
             browser_path: None,
             selected_tab,
         }
@@ -71,6 +78,10 @@ impl Component for Header {
                     Line::from(vec![
                         Span::styled("T", Style::default().add_modifier(Modifier::UNDERLINED)),
                         Span::raw(format!("ooling Overview ({})", self.tooling_count,)),
+                    ]),
+                    Line::from(vec![
+                        Span::styled("V", Style::default().add_modifier(Modifier::UNDERLINED)),
+                        Span::raw(format!("ersion controlled ({})", self.vcs_count,)),
                     ]),
                 ];
                 let tabs = Tabs::new(titles)
