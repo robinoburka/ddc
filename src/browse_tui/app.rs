@@ -273,6 +273,9 @@ impl App {
     }
 
     fn select_tab(&mut self, tab: Tab) {
+        if self.selected_tab != tab {
+            self.filter.clear();
+        }
         self.layers.clear();
         self.layers.push(UiLayer::Tab);
         self.selected_tab = tab;

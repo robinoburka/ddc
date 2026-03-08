@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-#[derive(Debug, Default, Copy, Clone)]
+#[derive(Debug, Default, Copy, Clone, Eq, PartialEq)]
 pub enum Tab {
     #[default]
     Projects,
