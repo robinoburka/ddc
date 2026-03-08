@@ -173,6 +173,11 @@ impl Component for HelpModal {
                 Span::raw("and you can use / to gain focus to the filter again."),
             ])
             .style(Style::default().add_modifier(Modifier::DIM)),
+            Line::from(vec![
+                Span::styled("x", Style::default().fg(Color::Yellow)),
+                Span::raw("         "),
+                Span::raw("In VCS tab, jump to Projects filtered by selected VCS root"),
+            ]),
             Line::from(""),
             Line::from(vec![
                 Span::styled("Esc", Style::default().fg(Color::Yellow)),

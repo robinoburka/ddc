@@ -37,6 +37,7 @@ pub enum AppMessage {
     StartFilter,
     AcceptFilter,
     DismissFilter,
+    SelectTabWithFilter(Tab, String),
     // Error reporting
     SetError(String),
 }

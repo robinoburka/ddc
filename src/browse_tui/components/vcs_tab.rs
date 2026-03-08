@@ -11,7 +11,7 @@ use ratatui::{Frame, crossterm::event::KeyCode};
 
 use crate::browse_tui::component::{Component, Navigable};
 use crate::browse_tui::helpers::{dimmed_size_cell, last_update_cell, now, size_cell};
-use crate::browse_tui::message::{AppMessage, SortBy, SortDirection};
+use crate::browse_tui::message::{AppMessage, SortBy, SortDirection, Tab};
 use crate::vcs_postprocess::EnrichedVcsResult;
 
 #[derive(Debug)]
@@ -105,6 +105,19 @@ impl VcsTab {
         Some(AppMessage::StartFilter)
     }
 
+    fn show_detected_projects(&mut self) -> Option<AppMessage> {
+        let result = self.selected_result()?;
+
+        if result.matched_projects.is_empty() {
+            return None;
+        }
+
+        Some(AppMessage::SelectTabWithFilter(
+            Tab::Projects,
+            result.path.to_string_lossy().to_string(),
+        ))
+    }
+
     fn sync_scroll(&mut self) {
         let selected = self.state.selected().unwrap_or(0);
         self.scroll_state = ScrollbarState::new(self.view.len()).position(selected);
@@ -164,6 +177,7 @@ pub enum VcsTabMessage {
     RequestSort,
     ApplySort(SortBy),
     StartFilter,
+    ShowDetectedProjects,
 }
 
 impl Component for VcsTab {
@@ -189,6 +203,9 @@ impl Component for VcsTab {
             VcsTabMessage::StartFilter => {
                 return self.start_filter();
             }
+            VcsTabMessage::ShowDetectedProjects => {
+                return self.show_detected_projects();
+            }
         }
         None
     }
@@ -204,6 +221,7 @@ impl Component for VcsTab {
             KeyCode::End => Some(VcsTabMessage::End),
             KeyCode::Char('s') => Some(VcsTabMessage::RequestSort),
             KeyCode::Char('/') => Some(VcsTabMessage::StartFilter),
+            KeyCode::Char('x') => Some(VcsTabMessage::ShowDetectedProjects),
             _ => None,
         }
     }

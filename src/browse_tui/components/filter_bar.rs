@@ -44,6 +44,13 @@ impl FilterBar {
         }
     }
 
+    pub fn set_filter(&mut self, filter: String) {
+        self.input = filter;
+        self.cursor_position = self.input.len();
+        self.is_active = true;
+        self.has_focus = false;
+    }
+
     fn activate(&mut self) {
         self.is_active = true;
         self.has_focus = true;

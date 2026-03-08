@@ -221,6 +221,9 @@ impl App {
             AppMessage::CloseBrowser => self.close_browser(),
             AppMessage::EnterBrowser(path) => self.enter_browser(path),
             AppMessage::SelectTab(i) => self.select_tab(i),
+            AppMessage::SelectTabWithFilter(tab, filter) => {
+                self.select_tab_with_filter(tab, filter)
+            }
             AppMessage::OpenInfo(text) => self.open_info(text),
             AppMessage::OpenSort(options) => self.open_sort(options),
             AppMessage::RequestSort(sort_by) => {
@@ -274,6 +277,11 @@ impl App {
         self.layers.push(UiLayer::Tab);
         self.selected_tab = tab;
         self.browser = None;
+    }
+
+    fn select_tab_with_filter(&mut self, tab: Tab, filter: String) {
+        self.select_tab(tab);
+        self.filter.set_filter(filter);
     }
 
     fn open_info(&mut self, text: &'static str) {
