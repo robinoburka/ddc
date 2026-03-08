@@ -101,7 +101,7 @@ impl Component for Footer {
                 ),
                 Span::raw(" Filter  "),
                 Span::styled(
-                    "d/t",
+                    "d/t/v",
                     Style::default()
                         .fg(Color::Yellow)
                         .add_modifier(Modifier::BOLD),

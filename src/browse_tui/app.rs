@@ -15,7 +15,7 @@ use crate::browse_tui::component::Component;
 use crate::browse_tui::components::filter_bar::FilterBar;
 use crate::browse_tui::components::sort_modal::SortModal;
 use crate::browse_tui::components::{
-    DirectoryBrowser, Footer, Header, HelpModal, InfoModal, ProjectsTab, ToolingTab,
+    DirectoryBrowser, Footer, Header, HelpModal, InfoModal, ProjectsTab, ToolingTab, VcsTab,
 };
 use crate::browse_tui::message::{AppMessage, SortBy, Tab};
 use crate::discovery::{ProjectResult, ToolingResult};
@@ -41,6 +41,7 @@ enum Message {
     AppMessage(AppMessage),
     ProjectsTab(<ProjectsTab as Component>::Message),
     ToolingTab(<ToolingTab as Component>::Message),
+    VcsTab(<VcsTab as Component>::Message),
     DirectoryBrowser(<DirectoryBrowser as Component>::Message),
     InfoModal(<InfoModal as Component>::Message),
     SortModal(<SortModal as Component>::Message),
@@ -66,6 +67,7 @@ pub struct App {
     footer: Footer,
     projects_tab: ProjectsTab,
     tooling_tab: ToolingTab,
+    vcs_tab: VcsTab,
     browser: Option<DirectoryBrowser>,
     filter: FilterBar,
     // Helper data
@@ -78,17 +80,23 @@ impl App {
     pub fn new(
         projects_data: Vec<ProjectResult>,
         tooling_data: Vec<ToolingResult>,
-        _vcs_result: Vec<EnrichedVcsResult>,
+        vcs_result: Vec<EnrichedVcsResult>,
         db: FilesDB,
     ) -> Self {
         Self {
             running_state: RunningState::default(),
             layers: vec![UiLayer::Tab],
             selected_tab: Tab::default(),
-            header: Header::new(Tab::default(), projects_data.len(), tooling_data.len()),
+            header: Header::new(
+                Tab::default(),
+                projects_data.len(),
+                tooling_data.len(),
+                vcs_result.len(),
+            ),
             footer: Footer::new(),
             projects_tab: ProjectsTab::new(projects_data),
             tooling_tab: ToolingTab::new(tooling_data),
+            vcs_tab: VcsTab::new(vcs_result),
             browser: None,
             filter: FilterBar::new(),
             error_message: None,
@@ -130,6 +138,7 @@ impl App {
             UiLayer::Tab => match self.selected_tab {
                 Tab::Projects => self.projects_tab.handle_key(key).map(Message::ProjectsTab),
                 Tab::Tooling => self.tooling_tab.handle_key(key).map(Message::ToolingTab),
+                Tab::Vcs => self.vcs_tab.handle_key(key).map(Message::VcsTab),
             },
             UiLayer::Filter => self.filter.handle_key(key).map(Message::Filter),
             UiLayer::Browser => {
@@ -157,6 +166,9 @@ impl App {
                 KeyCode::Char('t') | KeyCode::Char('2') => {
                     Some(Message::AppMessage(AppMessage::SelectTab(Tab::Tooling)))
                 }
+                KeyCode::Char('v') | KeyCode::Char('3') => {
+                    Some(Message::AppMessage(AppMessage::SelectTab(Tab::Vcs)))
+                }
                 KeyCode::Char('?') => Some(Message::AppMessage(AppMessage::OpenHelp)),
                 KeyCode::Esc => Some(Message::AppMessage(AppMessage::CloseModal)),
                 _ => None,
@@ -173,6 +185,7 @@ impl App {
             Message::AppMessage(msg) => self.handle_app_message(msg),
             Message::ProjectsTab(msg) => self.projects_tab.update(msg).map(Message::AppMessage),
             Message::ToolingTab(msg) => self.tooling_tab.update(msg).map(Message::AppMessage),
+            Message::VcsTab(msg) => self.vcs_tab.update(msg).map(Message::AppMessage),
             Message::Filter(msg) => self.filter.update(msg).map(Message::AppMessage),
             Message::DirectoryBrowser(msg) => {
                 if let Some(browser) = self.browser.as_mut() {
@@ -285,6 +298,9 @@ impl App {
                 Tab::Tooling => Some(Message::ToolingTab(
                     <ToolingTab as Component>::Message::ApplySort(sort_by),
                 )),
+                Tab::Vcs => Some(Message::VcsTab(<VcsTab as Component>::Message::ApplySort(
+                    sort_by,
+                ))),
             },
             _ => None,
         }
@@ -327,6 +343,10 @@ impl App {
                     self.projects_tab.render(frame, chunks[1]);
                 }
                 Tab::Tooling => self.tooling_tab.render(frame, chunks[1]),
+                Tab::Vcs => {
+                    self.vcs_tab.apply_filter(self.filter.get_filter());
+                    self.vcs_tab.render(frame, chunks[1]);
+                }
             }
         }
         match self.layers.last_mut() {

@@ -5,6 +5,7 @@ pub enum Tab {
     #[default]
     Projects,
     Tooling,
+    Vcs,
 }
 
 impl Tab {
@@ -12,6 +13,7 @@ impl Tab {
         match self {
             Tab::Projects => 0,
             Tab::Tooling => 1,
+            Tab::Vcs => 2,
         }
     }
 }

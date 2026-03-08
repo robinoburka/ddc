@@ -60,6 +60,10 @@ pub fn popup_area_clamped(
 
 pub fn size_cell(size: u64) -> Cell<'static> {
     let text = format_size(size, DECIMAL);
+    Cell::from(text).style(size_cell_style(size))
+}
+
+fn size_cell_style(size: u64) -> Style {
     let color = match get_size_color_code(size) {
         ColorCode::None => Color::Gray,
         ColorCode::Low => Color::Green,
@@ -67,7 +71,12 @@ pub fn size_cell(size: u64) -> Cell<'static> {
         ColorCode::High => Color::Red,
     };
 
-    Cell::from(text).style(Style::default().fg(color))
+    Style::default().fg(color)
+}
+
+pub fn dimmed_size_cell(size: u64) -> Cell<'static> {
+    let text = format_size(size, DECIMAL);
+    Cell::from(text).style(size_cell_style(size).add_modifier(Modifier::DIM))
 }
 
 pub fn last_update_cell(now: SystemTime, last: Option<SystemTime>) -> Cell<'static> {
