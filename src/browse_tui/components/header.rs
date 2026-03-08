@@ -83,6 +83,10 @@ impl Component for Header {
                         Span::styled("V", Style::default().add_modifier(Modifier::UNDERLINED)),
                         Span::raw(format!("ersion Controlled ({})", self.vcs_count,)),
                     ]),
+                    Line::from(vec![
+                        Span::styled("B", Style::default().add_modifier(Modifier::UNDERLINED)),
+                        Span::raw("rowse all"),
+                    ]),
                 ];
                 let tabs = Tabs::new(titles)
                     .highlight_style(

@@ -69,15 +69,16 @@ pub fn browse(
         return Err(BrowseError::NoResultsFound);
     }
 
-    start_tui(discovery_results)?;
+    start_tui(home_dir, discovery_results)?;
 
     Ok(())
 }
 
-fn start_tui(discovery_results: DiscoveryResults) -> io::Result<()> {
+fn start_tui(home_dir: &Path, discovery_results: DiscoveryResults) -> io::Result<()> {
     let vcs_results = vcs_postprocess(&discovery_results.projects, discovery_results.vcs);
     ratatui::run(|terminal| {
         App::new(
+            home_dir,
             discovery_results.projects,
             discovery_results.tools,
             vcs_results,

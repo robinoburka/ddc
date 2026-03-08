@@ -1,6 +1,6 @@
 use std::io;
 use std::option::Option;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::time::Duration;
 
@@ -46,6 +46,7 @@ enum Message {
     InfoModal(<InfoModal as Component>::Message),
     SortModal(<SortModal as Component>::Message),
     Filter(<FilterBar as Component>::Message),
+    BrowserTab(<DirectoryBrowser as Component>::Message),
 }
 
 #[derive(Debug)]
@@ -68,6 +69,7 @@ pub struct App {
     projects_tab: ProjectsTab,
     tooling_tab: ToolingTab,
     vcs_tab: VcsTab,
+    browser_tab: DirectoryBrowser,
     browser: Option<DirectoryBrowser>,
     filter: FilterBar,
     // Helper data
@@ -78,11 +80,13 @@ pub struct App {
 
 impl App {
     pub fn new(
+        home_dir: &Path,
         projects_data: Vec<ProjectResult>,
         tooling_data: Vec<ToolingResult>,
         vcs_result: Vec<EnrichedVcsResult>,
         db: FilesDB,
     ) -> Self {
+        let db = Rc::new(db);
         Self {
             running_state: RunningState::default(),
             layers: vec![UiLayer::Tab],
@@ -97,10 +101,11 @@ impl App {
             projects_tab: ProjectsTab::new(projects_data),
             tooling_tab: ToolingTab::new(tooling_data),
             vcs_tab: VcsTab::new(vcs_result),
+            browser_tab: DirectoryBrowser::new(db.clone(), home_dir.to_path_buf()).unwrap(),
             browser: None,
             filter: FilterBar::new(),
             error_message: None,
-            db: Rc::new(db),
+            db,
         }
     }
 
@@ -139,6 +144,7 @@ impl App {
                 Tab::Projects => self.projects_tab.handle_key(key).map(Message::ProjectsTab),
                 Tab::Tooling => self.tooling_tab.handle_key(key).map(Message::ToolingTab),
                 Tab::Vcs => self.vcs_tab.handle_key(key).map(Message::VcsTab),
+                Tab::BrowseAll => self.browser_tab.handle_key(key).map(Message::BrowserTab),
             },
             UiLayer::Filter => self.filter.handle_key(key).map(Message::Filter),
             UiLayer::Browser => {
@@ -169,6 +175,9 @@ impl App {
                 KeyCode::Char('v') | KeyCode::Char('3') => {
                     Some(Message::AppMessage(AppMessage::SelectTab(Tab::Vcs)))
                 }
+                KeyCode::Char('b') | KeyCode::Char('4') => {
+                    Some(Message::AppMessage(AppMessage::SelectTab(Tab::BrowseAll)))
+                }
                 KeyCode::Char('?') => Some(Message::AppMessage(AppMessage::OpenHelp)),
                 KeyCode::Esc => Some(Message::AppMessage(AppMessage::CloseModal)),
                 _ => None,
@@ -186,6 +195,7 @@ impl App {
             Message::ProjectsTab(msg) => self.projects_tab.update(msg).map(Message::AppMessage),
             Message::ToolingTab(msg) => self.tooling_tab.update(msg).map(Message::AppMessage),
             Message::VcsTab(msg) => self.vcs_tab.update(msg).map(Message::AppMessage),
+            Message::BrowserTab(msg) => self.browser_tab.update(msg).map(Message::AppMessage),
             Message::Filter(msg) => self.filter.update(msg).map(Message::AppMessage),
             Message::DirectoryBrowser(msg) => {
                 if let Some(browser) = self.browser.as_mut() {
@@ -312,6 +322,7 @@ impl App {
                 Tab::Vcs => Some(Message::VcsTab(<VcsTab as Component>::Message::ApplySort(
                     sort_by,
                 ))),
+                Tab::BrowseAll => None,
             },
             _ => None,
         }
@@ -357,6 +368,9 @@ impl App {
                 Tab::Vcs => {
                     self.vcs_tab.apply_filter(self.filter.get_filter());
                     self.vcs_tab.render(frame, chunks[1]);
+                }
+                Tab::BrowseAll => {
+                    self.browser_tab.render(frame, chunks[1]);
                 }
             }
         }

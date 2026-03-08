@@ -6,6 +6,7 @@ pub enum Tab {
     Projects,
     Tooling,
     Vcs,
+    BrowseAll,
 }
 
 impl Tab {
@@ -14,6 +15,7 @@ impl Tab {
             Tab::Projects => 0,
             Tab::Tooling => 1,
             Tab::Vcs => 2,
+            Tab::BrowseAll => 3,
         }
     }
 }
