@@ -34,7 +34,14 @@ impl SortModal {
     }
 
     fn set_sort_by(&mut self, sort_by: SortBy) -> Option<AppMessage> {
-        Some(AppMessage::RequestSort(sort_by))
+        if self.options.contains(&sort_by) {
+            Some(AppMessage::RequestSort(sort_by))
+        } else {
+            Some(AppMessage::SetError(format!(
+                "Sort option '{}' is not available in this tab",
+                sort_by.label()
+            )))
+        }
     }
 
     fn select_sort_option(&mut self) -> Option<AppMessage> {
