@@ -20,6 +20,7 @@ use crate::browse_tui::components::{
 use crate::browse_tui::message::{AppMessage, SortBy, Tab};
 use crate::discovery::{ProjectResult, ToolingResult};
 use crate::files_db::FilesDB;
+use crate::vcs_postprocess::EnrichedVcsResult;
 
 #[derive(Debug, Default, Eq, PartialEq)]
 enum RunningState {
@@ -77,6 +78,7 @@ impl App {
     pub fn new(
         projects_data: Vec<ProjectResult>,
         tooling_data: Vec<ToolingResult>,
+        _vcs_result: Vec<EnrichedVcsResult>,
         db: FilesDB,
     ) -> Self {
         Self {

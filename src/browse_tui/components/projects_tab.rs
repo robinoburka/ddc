@@ -132,9 +132,7 @@ impl ProjectsTab {
                     self.results[*a_idx].path.cmp(&self.results[*b_idx].path)
                 }),
                 SortBy::Size => self.view.sort_by_key(|idx| self.results[*idx].size),
-                SortBy::LastUpdate => self
-                    .view
-                    .sort_by_key(|idx| self.results[*idx].last_update),
+                SortBy::LastUpdate => self.view.sort_by_key(|idx| self.results[*idx].last_update),
             }
 
             if self.sort_direction == SortDirection::Descending {
@@ -142,11 +140,7 @@ impl ProjectsTab {
             }
         }
 
-        self.sum = self
-            .view
-            .iter()
-            .map(|&idx| self.results[idx].size)
-            .sum();
+        self.sum = self.view.iter().map(|&idx| self.results[idx].size).sum();
         self.adjust_selection_to_view();
         self.sync_scroll();
     }

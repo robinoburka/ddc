@@ -8,10 +8,11 @@ use crate::files_db::FilesDB;
 pub struct DiscoveryResults {
     pub projects: Vec<ProjectResult>,
     pub tools: Vec<ToolingResult>,
+    pub vcs: Vec<VcsResult>,
     pub db: Option<FilesDB>,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct ProjectResult {
     pub path: PathBuf,
     pub lang: Language,
@@ -30,6 +31,14 @@ pub struct ToolingResult {
     pub info: Option<&'static str>,
 }
 
+#[derive(Debug)]
+pub struct VcsResult {
+    pub path: PathBuf,
+    pub size: u64,
+    pub last_update: Option<SystemTime>,
+    pub vcs_size: u64,
+}
+
 #[derive(Clone, Debug)]
 pub struct ParentInfo {
     pub path: PathBuf,
@@ -40,4 +49,5 @@ pub struct ParentInfo {
 pub(super) enum DiscoveryResultEnvelop {
     Project(ProjectResult),
     Tool(ToolingResult),
+    Vcs(VcsResult),
 }
