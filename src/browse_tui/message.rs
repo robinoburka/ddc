@@ -54,6 +54,7 @@ pub(super) enum SortBy {
     Project,
     Size,
     LastUpdate,
+    DetectedProjects,
 }
 
 impl SortBy {
@@ -62,6 +63,7 @@ impl SortBy {
             SortBy::Project => 'p',
             SortBy::Size => 's',
             SortBy::LastUpdate => 'u',
+            SortBy::DetectedProjects => 'd',
         }
     }
 
@@ -70,6 +72,7 @@ impl SortBy {
             SortBy::Project => "Project",
             SortBy::Size => "Size",
             SortBy::LastUpdate => "Last update",
+            SortBy::DetectedProjects => "Detected projects",
         }
     }
 
@@ -78,6 +81,7 @@ impl SortBy {
             SortBy::Project => SortDirection::Ascending,
             SortBy::Size => SortDirection::Descending,
             SortBy::LastUpdate => SortDirection::Ascending,
+            SortBy::DetectedProjects => SortDirection::Descending,
         }
     }
 }

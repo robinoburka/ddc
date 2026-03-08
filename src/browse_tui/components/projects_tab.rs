@@ -133,6 +133,7 @@ impl ProjectsTab {
                 }),
                 SortBy::Size => self.view.sort_by_key(|idx| self.results[*idx].size),
                 SortBy::LastUpdate => self.view.sort_by_key(|idx| self.results[*idx].last_update),
+                _ => {}
             }
 
             if self.sort_direction == SortDirection::Descending {

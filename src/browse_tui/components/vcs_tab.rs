@@ -29,7 +29,12 @@ pub struct VcsTab {
 }
 
 impl VcsTab {
-    const SORT_OPTIONS: [SortBy; 3] = [SortBy::Project, SortBy::Size, SortBy::LastUpdate];
+    const SORT_OPTIONS: [SortBy; 4] = [
+        SortBy::Project,
+        SortBy::Size,
+        SortBy::LastUpdate,
+        SortBy::DetectedProjects,
+    ];
 
     pub fn new(results: Vec<EnrichedVcsResult>) -> Self {
         let filter_paths = results
@@ -141,6 +146,9 @@ impl VcsTab {
                 }),
                 SortBy::Size => self.view.sort_by_key(|idx| self.results[*idx].size),
                 SortBy::LastUpdate => self.view.sort_by_key(|idx| &self.results[*idx].last_update),
+                SortBy::DetectedProjects => self
+                    .view
+                    .sort_by_key(|idx| self.results[*idx].matched_projects.len()),
             }
 
             if self.sort_direction == SortDirection::Descending {

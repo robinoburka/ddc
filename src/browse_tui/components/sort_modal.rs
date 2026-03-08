@@ -89,6 +89,7 @@ impl Component for SortModal {
             KeyCode::Char('p') => Some(SortModalMessage::SortBy(SortBy::Project)),
             KeyCode::Char('s') => Some(SortModalMessage::SortBy(SortBy::Size)),
             KeyCode::Char('u') => Some(SortModalMessage::SortBy(SortBy::LastUpdate)),
+            KeyCode::Char('d') => Some(SortModalMessage::SortBy(SortBy::DetectedProjects)),
             KeyCode::Enter => Some(SortModalMessage::SelectOption),
             _ => None,
         }
