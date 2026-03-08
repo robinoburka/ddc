@@ -98,14 +98,6 @@ pub fn last_update_cell(now: SystemTime, last: Option<SystemTime>) -> Cell<'stat
     Cell::from(text).style(Style::default().fg(color))
 }
 
-pub fn parent_size_cell(parent_size: Option<u64>) -> Cell<'static> {
-    let text = parent_size
-        .map(|s| format_size(s, DECIMAL))
-        .unwrap_or_default();
-
-    Cell::from(text).style(Style::default().add_modifier(Modifier::DIM))
-}
-
 pub fn percent_bar(width: usize, percent: f64) -> Line<'static> {
     let filled_len = ((width as f64) * percent / 100.0).round() as usize;
 

@@ -8,7 +8,7 @@ use ratatui::widgets::{
 use ratatui::{Frame, crossterm::event::KeyCode};
 
 use crate::browse_tui::component::{Component, Navigable};
-use crate::browse_tui::helpers::{last_update_cell, now, parent_size_cell, size_cell};
+use crate::browse_tui::helpers::{dimmed_size_cell, last_update_cell, now, size_cell};
 use crate::browse_tui::message::{AppMessage, SortBy, SortDirection};
 use crate::discovery::ProjectResult;
 
@@ -295,7 +295,7 @@ fn create_row<'a>(result: &'a ProjectResult) -> Row<'a> {
         Cell::from(Line::from(result.path.display().to_string())),
         size_cell(result.size),
         last_update_cell(now(), result.last_update),
-        parent_size_cell(result.parent.as_ref().map(|p| p.size)),
+        dimmed_size_cell(result.parent.as_ref().map(|p| p.size).unwrap_or_default()),
     ])
 }
 
