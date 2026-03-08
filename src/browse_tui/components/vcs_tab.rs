@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use humansize::{DECIMAL, format_size};
-use ratatui::layout::{Constraint, Rect};
+use ratatui::layout::{Alignment, Constraint, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::Line;
 use ratatui::widgets::{
@@ -282,7 +282,16 @@ impl Component for VcsTab {
                 .borders(Borders::ALL)
                 .title(" Version controlled ")
                 .title_style(Style::default().fg(Color::LightYellow))
-                .border_style(Style::default().fg(Color::LightYellow)),
+                .border_style(Style::default().fg(Color::LightYellow))
+                .title_bottom(
+                    Line::from(" Use 'x' to navigate to discovered projects ")
+                        .alignment(Alignment::Right)
+                        .style(
+                            Style::default()
+                                .fg(Color::Gray)
+                                .add_modifier(Modifier::ITALIC),
+                        ),
+                ),
         )
         .row_highlight_style(
             Style::default()
