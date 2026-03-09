@@ -1,8 +1,10 @@
-name: DDC CI (nightly)
+name: DDC CI
 
 on:
   push:
     branches: ["*"]
+    tags:
+      - "v*.*.*"
   pull_request:
     branches: ["*"]
 
