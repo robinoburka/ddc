@@ -80,13 +80,6 @@ impl Component for Footer {
                 ),
                 Span::raw(" Enter Parent  "),
                 Span::styled(
-                    "i",
-                    Style::default()
-                        .fg(Color::Yellow)
-                        .add_modifier(Modifier::BOLD),
-                ),
-                Span::raw(" Info  "),
-                Span::styled(
                     "s",
                     Style::default()
                         .fg(Color::Yellow)
