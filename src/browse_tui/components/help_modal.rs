@@ -30,7 +30,7 @@ impl Component for HelpModal {
     }
 
     fn render(&mut self, frame: &mut Frame, area: Rect) {
-        let area = helpers::popup_area_clamped(area, 70, 150, 80, 22, 40, 60);
+        let area = helpers::popup_area_clamped(area, 70, 150, 80, 30, 40, 80);
         let help = Paragraph::new(vec![
             Line::from(vec![
                 Span::styled("d", Style::default().fg(Color::Yellow)),
