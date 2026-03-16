@@ -160,13 +160,13 @@ impl App {
             message = match key {
                 KeyCode::Char('q') => Some(Message::AppMessage(AppMessage::Quit)),
                 KeyCode::Char('r') => Some(Message::AppMessage(AppMessage::Refresh)),
-                KeyCode::Char('d') | KeyCode::Char('1') => {
+                KeyCode::Char('d') | KeyCode::Char('D') | KeyCode::Char('1') => {
                     Some(Message::AppMessage(AppMessage::SelectTab(Tab::Projects)))
                 }
-                KeyCode::Char('t') | KeyCode::Char('2') => {
+                KeyCode::Char('t') | KeyCode::Char('T') | KeyCode::Char('2') => {
                     Some(Message::AppMessage(AppMessage::SelectTab(Tab::Tooling)))
                 }
-                KeyCode::Char('v') | KeyCode::Char('3') => {
+                KeyCode::Char('v') | KeyCode::Char('V') | KeyCode::Char('3') => {
                     Some(Message::AppMessage(AppMessage::SelectTab(Tab::Vcs)))
                 }
                 KeyCode::Char('?') => Some(Message::AppMessage(AppMessage::OpenHelp)),

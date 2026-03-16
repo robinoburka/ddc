@@ -35,8 +35,10 @@ impl Component for HelpModal {
             Line::from(vec![
                 Span::styled("d", Style::default().fg(Color::Yellow)),
                 Span::raw(", "),
+                Span::styled("D", Style::default().fg(Color::Yellow)),
+                Span::raw(", "),
                 Span::styled("1", Style::default().fg(Color::Yellow)),
-                Span::raw("      "),
+                Span::raw("   "),
                 Span::raw("Switch to the "),
                 Span::styled(
                     "Detected Projects",
@@ -47,8 +49,10 @@ impl Component for HelpModal {
             Line::from(vec![
                 Span::styled("t", Style::default().fg(Color::Yellow)),
                 Span::raw(", "),
+                Span::styled("T", Style::default().fg(Color::Yellow)),
+                Span::raw(", "),
                 Span::styled("2", Style::default().fg(Color::Yellow)),
-                Span::raw("      "),
+                Span::raw("   "),
                 Span::raw("Switch to the "),
                 Span::styled(
                     "Tooling Overview",
@@ -59,8 +63,10 @@ impl Component for HelpModal {
             Line::from(vec![
                 Span::styled("v", Style::default().fg(Color::Yellow)),
                 Span::raw(", "),
+                Span::styled("V", Style::default().fg(Color::Yellow)),
+                Span::raw(", "),
                 Span::styled("3", Style::default().fg(Color::Yellow)),
-                Span::raw("      "),
+                Span::raw("   "),
                 Span::raw("Switch to the "),
                 Span::styled(
                     "Version Controlled",
