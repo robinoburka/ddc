@@ -114,7 +114,9 @@ impl VcsTab {
         let result = self.selected_result()?;
 
         if result.matched_projects.is_empty() {
-            return None;
+            return Some(AppMessage::SetError(String::from(
+                "This record has no detected projects.",
+            )));
         }
 
         Some(AppMessage::SelectTabWithFilter(
