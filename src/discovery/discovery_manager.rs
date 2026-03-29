@@ -256,7 +256,10 @@ fn static_detector<R>(
                 size,
                 info: dd.info,
             });
-            tx.send(r).unwrap();
+            if tx.send(r).is_err() {
+                warn!("Discovery receiver dropped, stopping static detection");
+                return;
+            }
         }
     }
     progress.report(ProgressEvent::DiscoveryAdvance)
@@ -299,7 +302,9 @@ fn vcs_detector<R>(
                 size,
                 vcs_size,
             });
-            tx.send(r).unwrap();
+            if tx.send(r).is_err() {
+                warn!("Discovery receiver dropped, stopping VCS detection");
+            }
         });
     }
     progress.report(ProgressEvent::DiscoveryAdvance)
@@ -344,7 +349,9 @@ fn discovery_thread<D, R>(
                     path: parent_path,
                 }),
             });
-            tx.send(r).unwrap();
+            if tx.send(r).is_err() {
+                warn!("Discovery receiver dropped, stopping project detection");
+            }
         });
     }
     progress.report(ProgressEvent::DiscoveryAdvance);

@@ -4,7 +4,7 @@ use std::sync::mpsc::channel;
 use crossbeam::channel;
 use jwalk::rayon::prelude::*;
 use jwalk::{Parallelism, WalkDir};
-use tracing::{debug, debug_span};
+use tracing::{debug, debug_span, warn};
 
 use crate::discovery::{PathLoader, ProgressEvent, ProgressReporter};
 use crate::file_info::get_file_meta;
@@ -54,7 +54,11 @@ impl PathLoader for BaseLoader {
                             None
                         }
                     })
-                    .for_each(|(path, meta)| sender.send((path, meta)).unwrap());
+                    .for_each(|(path, meta)| {
+                        if sender.send((path, meta)).is_err() {
+                            warn!("Receiver dropped, stopping file info production");
+                        }
+                    });
             });
 
         let mut db = FilesDB::new();
@@ -70,8 +74,13 @@ impl PathLoader for BaseLoader {
 pub struct FullyParallelLoader;
 
 impl FullyParallelLoader {
-    const NUM_LOADER_THREADS: usize = 4;
-    const NUM_WORKER_THREADS: usize = 4;
+    fn num_loader_threads() -> usize {
+        (rayon::current_num_threads() / 2).max(1)
+    }
+
+    fn num_worker_threads() -> usize {
+        (rayon::current_num_threads() / 2).max(1)
+    }
 }
 
 impl PathLoader for FullyParallelLoader {
@@ -91,11 +100,13 @@ impl PathLoader for FullyParallelLoader {
         });
 
         scan_paths.iter().for_each(|path| {
-            sources_sender.send(path.clone()).unwrap();
+            if sources_sender.send(path.clone()).is_err() {
+                warn!("Sources receiver dropped, stopping source production");
+            }
         });
         drop(sources_sender);
 
-        for _ in 0..Self::NUM_LOADER_THREADS {
+        for _ in 0..Self::num_loader_threads() {
             let my_paths_sender = paths_sender.clone();
             let my_sources_receiver = sources_receiver.clone();
             let my_progress = progress.clone();
@@ -109,7 +120,9 @@ impl PathLoader for FullyParallelLoader {
                         })
                     });
                     loaded_paths.into_iter().for_each(|path| {
-                        my_paths_sender.send(path).unwrap();
+                        if my_paths_sender.send(path).is_err() {
+                            warn!("Paths receiver dropped, stopping path production");
+                        }
                     });
                 });
             });
@@ -117,7 +130,7 @@ impl PathLoader for FullyParallelLoader {
         drop(sources_receiver);
         drop(paths_sender);
 
-        for _ in 0..Self::NUM_WORKER_THREADS {
+        for _ in 0..Self::num_worker_threads() {
             let my_paths_receiver = paths_receiver.clone();
             let my_infos_sender = infos_sender.clone();
             let my_progress = progress.clone();
@@ -127,7 +140,9 @@ impl PathLoader for FullyParallelLoader {
                         .as_ref()
                         .inspect(|r| r.report(ProgressEvent::WalkAdvance));
                     if let Ok(meta) = get_file_meta(&path) {
-                        my_infos_sender.send((path, meta)).unwrap();
+                        if my_infos_sender.send((path, meta)).is_err() {
+                            warn!("Infos receiver dropped, stopping info production");
+                        }
                     } else {
                         debug!("Failed to load info for {}", path.display());
                     }

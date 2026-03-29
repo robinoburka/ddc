@@ -108,6 +108,9 @@ impl<'a> Iterator for LevelIter<'a, '_> {
 
     fn next(&mut self) -> Option<Self::Item> {
         while let Some((path, meta)) = self.cursor.next() {
+            if !path.starts_with(self.lookup_path) {
+                return None;
+            }
             if path.parent()? == self.lookup_path {
                 return Some(FileInfo {
                     path,

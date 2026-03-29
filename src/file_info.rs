@@ -20,7 +20,7 @@ impl From<&fs::Metadata> for FileMeta {
 }
 
 pub fn get_file_meta(path: &Path) -> Result<FileMeta, std::io::Error> {
-    let metadata = fs::metadata(path).or(fs::symlink_metadata(path))?;
+    let metadata = fs::symlink_metadata(path)?;
     Ok(FileMeta::from(&metadata))
 }
 
