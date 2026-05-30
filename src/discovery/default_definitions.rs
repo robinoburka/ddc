@@ -9,6 +9,9 @@ Cargo will just need to download data to during the next compiles.
 
 Alternatively, you can check `cargo-cache` binary crate."#;
 
+const RUSTUP_TOOLCHAIN_INFO: &str = r#"Use `rustup toolchain list` to inspect installed toolchains.
+
+Then you can remove unused toolchains with: `rustup toolchain uninstall VERSION"#;
 const UV_PYTHON_INSTALLATIONS_INFO: &str = r#"Use `uv python list` to inspect installed Python version.
 
 Then you can remove unnecessary instalations with: `uv python uninstall VERSION`."#;
@@ -29,6 +32,14 @@ pub fn default_discovery_definitions(home: &Path) -> Vec<DiscoveryDefinition> {
             description: "Cargo registry",
             path: ".cargo/registry".into(),
             info: Some(CARGO_REGISTRY_INFO),
+        },
+        // Rustup toolchains directory
+        DiscoveryDefinition {
+            lang: Language::Rust,
+            discovery: false,
+            description: "rustup toolchains",
+            path: ".rustup".into(),
+            info: Some(RUSTUP_TOOLCHAIN_INFO),
         },
         // Python
         ////////////////////////////////////////
