@@ -37,6 +37,18 @@ pub fn browse(
     ui_config: &UiConfig,
     home_dir: &Path,
 ) -> Result<(), BrowseError> {
+    let discovery_results = collect_results(cmd_args, ui_config, home_dir)?;
+    start_tui(discovery_results)?;
+
+    Ok(())
+}
+
+/// Runs the discovery process shared by all interactive frontends.
+pub fn collect_results(
+    cmd_args: &BrowseArgs,
+    ui_config: &UiConfig,
+    home_dir: &Path,
+) -> Result<DiscoveryResults, BrowseError> {
     let config = load_config_file(home_dir, cmd_args.shared.config.as_deref())?;
     let definitions = config
         .paths
@@ -69,9 +81,7 @@ pub fn browse(
         return Err(BrowseError::NoResultsFound);
     }
 
-    start_tui(discovery_results)?;
-
-    Ok(())
+    Ok(discovery_results)
 }
 
 fn start_tui(discovery_results: DiscoveryResults) -> io::Result<()> {

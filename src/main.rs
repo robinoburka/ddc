@@ -23,6 +23,8 @@ mod display_tools;
 mod file_info;
 mod files_db;
 mod generate_config;
+#[cfg(feature = "gui")]
+mod gui;
 mod loader;
 mod logging;
 mod vcs_postprocess;
@@ -47,6 +49,8 @@ fn main() -> anyhow::Result<()> {
         Some(Commands::ShowDefinitions) => show_default_definitions(&home_dir),
         Some(Commands::Analyze(cmd_args)) => analyze(&cmd_args, &ui_config, &home_dir)?,
         Some(Commands::Browse(cmd_args)) => browse(&cmd_args, &ui_config, &home_dir)?,
+        #[cfg(feature = "gui")]
+        Some(Commands::Gui(cmd_args)) => gui::run(&cmd_args, &ui_config, &home_dir)?,
         None => analyze(&AnalyzeArgs::default(), &ui_config, &home_dir)?,
     };
 

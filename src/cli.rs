@@ -24,6 +24,9 @@ pub enum Commands {
     Analyze(AnalyzeArgs),
     /// Interactive browser of the analyzed data
     Browse(BrowseArgs),
+    /// Graphical browser of the analyzed data (experimental)
+    #[cfg(feature = "gui")]
+    Gui(BrowseArgs),
 }
 
 #[derive(Args, Debug, Default)]
@@ -58,6 +61,8 @@ impl From<&CliArgs> for UiConfig {
         let show = match args.command {
             Some(Commands::Analyze(ref cmd_args)) => !cmd_args.shared.no_progress,
             Some(Commands::Browse(ref cmd_args)) => !cmd_args.shared.no_progress,
+            #[cfg(feature = "gui")]
+            Some(Commands::Gui(ref cmd_args)) => !cmd_args.shared.no_progress,
             _ => true,
         };
         let show_progress = match (level, show) {

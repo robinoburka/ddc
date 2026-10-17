@@ -21,7 +21,7 @@ pub struct ProjectResult {
     pub parent: Option<ParentInfo>,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct ToolingResult {
     pub description: &'static str,
     pub path: PathBuf,
